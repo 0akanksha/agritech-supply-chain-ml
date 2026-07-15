@@ -27,7 +27,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+      # server/src/index.ts resolves vite/@vitejs/plugin-react/@tailwindcss/vite from the
+      # ROOT node_modules by design (Node's module resolution walks up parent directories —
+      # see Phase 2), so the root install has to happen here too, not just server's.
+      - run: npm install
       - run: npm install --prefix server
       - run: npm run build --prefix server
 
