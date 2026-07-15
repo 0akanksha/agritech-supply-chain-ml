@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+
+# Python / ML service
+ml-service/.venv/
+ml-service/**/__pycache__/
+ml-service/app/models/artifacts/
+*.pyc
+
+# editor/OS
+.DS_Store

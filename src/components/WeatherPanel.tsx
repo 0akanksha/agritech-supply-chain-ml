@@ -1,0 +1,33 @@
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import type { WeatherPoint } from '@/types'
+import { formatShortDate } from '@/lib/format'
+
+interface Props {
+  data: WeatherPoint[]
+  loading: boolean
+}
+
+export default function WeatherPanel({ data, loading }: Props) {
+  return (
+    <div className="rounded-2xl border border-[var(--color-line)] bg-white p-5">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+        Weather — last 90 days
+      </h2>
+      {loading ? (
+        <div className="mt-4 h-56 animate-pulse rounded-lg bg-[var(--color-paper-soft)]" />
+      ) : (
+        <div className="mt-2 h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data.slice(-90)} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={29} tickFormatter={formatShortDate} />
+              <YAxis tick={{ fontSize: 10 }} />
+              <Tooltip labelFormatter={(v) => `Date: ${v}`} />
+              <Line type="monotone" dataKey="tempC" name="Temp (°C)" stroke="#c98a2e" dot={false} strokeWidth={2} />
+              <Line type="monotone" dataKey="rainfallMm" name="Rainfall (mm)" stroke="#2f6b3c" dot={false} strokeWidth={2} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
+}

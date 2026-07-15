@@ -1,0 +1,67 @@
+import type { Prediction, RiskLevel } from '@/types'
+
+interface Props {
+  prediction: Prediction | null
+  loading: boolean
+}
+
+const RISK_STYLES: Record<RiskLevel, { bg: string; text: string; label: string }> = {
+  low: { bg: 'bg-[var(--color-risk-low)]/10', text: 'text-[var(--color-risk-low)]', label: 'Low risk' },
+  medium: { bg: 'bg-[var(--color-risk-medium)]/10', text: 'text-[var(--color-risk-medium)]', label: 'Medium risk' },
+  high: { bg: 'bg-[var(--color-risk-high)]/10', text: 'text-[var(--color-risk-high)]', label: 'High risk' },
+}
+
+export default function RiskAlert({ prediction, loading }: Props) {
+  if (loading || !prediction) {
+    return (
+      <div className="rounded-2xl border border-[var(--color-line)] bg-white p-5">
+        <div className="h-40 animate-pulse rounded-lg bg-[var(--color-paper-soft)]" />
+      </div>
+    )
+  }
+
+  const style = RISK_STYLES[prediction.riskLevel]
+
+  return (
+    <div className="rounded-2xl border border-[var(--color-line)] bg-white p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+          Bottleneck risk
+        </h2>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.bg} ${style.text}`}>
+          {style.label}
+        </span>
+      </div>
+
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className="text-4xl font-bold text-[var(--color-ink)]">{prediction.riskScore}</span>
+        <span className="text-sm text-[var(--color-ink-soft)]">/ 100</span>
+      </div>
+
+      {prediction.daysToBottleneck !== null && (
+        <p className="mt-1 text-sm text-[var(--color-ink-soft)]">
+          Estimated {prediction.daysToBottleneck} days until the predicted bottleneck window.
+        </p>
+      )}
+
+      <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink)]">{prediction.explanation}</p>
+
+      <div className="mt-4 space-y-2">
+        {prediction.factors.map((f) => (
+          <div key={f.label}>
+            <div className="flex justify-between text-xs text-[var(--color-ink-soft)]">
+              <span>{f.label}</span>
+              <span>{Math.round(f.contribution * 100)}%</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full rounded-full bg-[var(--color-paper-soft)]">
+              <div
+                className="h-1.5 rounded-full bg-[var(--color-brand)]"
+                style={{ width: `${Math.min(100, Math.round(f.contribution * 100))}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
