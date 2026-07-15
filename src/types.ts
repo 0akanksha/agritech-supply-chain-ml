@@ -40,13 +40,36 @@ export interface Prediction {
   riskScore: number
   daysToBottleneck: number | null
   explanation: string
+  plainSummary: string
   factors: RiskFactor[]
 }
+
+export type UserRole = 'farmer' | 'admin'
 
 export interface User {
   id: string
   fullName: string
   email: string
+  role: UserRole
+}
+
+export interface EtlRun {
+  source: string
+  status: 'running' | 'success' | 'partial' | 'error' | 'skipped'
+  started_at: string
+  finished_at: string | null
+  rows_written: number | null
+  error: string | null
+}
+
+export interface TrainingRun {
+  runId: string
+  cropId: string | null
+  startTime: string
+  r2Test: number | null
+  maeTest: number | null
+  nTrain: string | null
+  nTest: string | null
 }
 
 export interface SavedFarm {

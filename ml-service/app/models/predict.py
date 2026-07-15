@@ -1,19 +1,26 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 
 import joblib
 import numpy as np
+import pandas as pd
 
-from app.data.features import DRIVER_COLUMNS, FEATURE_LABELS, build_feature_frame
+from app.data.features import DRIVER_COLUMNS, FEATURE_LABELS, build_feature_and_label_frame
+from app.data.real_data import load_ndvi, load_prices, load_weather
 from app.reference_data import CROPS_BY_ID, REGIONS_BY_ID
 
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
+# Enough real history for the rolling 4-week features to be non-null at the latest row,
+# with headroom for NDVI's ~16-day composite cadence — not a full retraining backfill.
+LOOKBACK_DAYS = 120
 
 _MODEL_CACHE: dict[str, dict] = {}
 
-# Same normalization scales used to build the rule-based label in features.py, reused here
-# to turn a feature's current reading into a comparable 0..~1+ "how stressed is this signal" value.
+# Typical-magnitude scales for each driver (independent of the label formula) — turns a
+# feature's current reading into a comparable 0..~1+ "how stressed is this signal" value,
+# weighted by the model's learned feature_importances_ to build the explanation factors.
 _DRIVER_SCALES = {
     "price_volatility_4w": lambda v: v / 0.06,
     "price_trend_abs_4w": lambda v: v / 0.15,
@@ -23,16 +30,17 @@ _DRIVER_SCALES = {
 }
 
 
-class ModelNotTrainedError(RuntimeError):
-    pass
+class PredictionUnavailableError(RuntimeError):
+    """No trained model for this crop yet, or not enough recent real data to featurize."""
 
 
 def _load_model(crop_id: str) -> dict:
     if crop_id not in _MODEL_CACHE:
         path = ARTIFACTS_DIR / f"{crop_id}.joblib"
         if not path.exists():
-            raise ModelNotTrainedError(
-                f"No trained model for crop '{crop_id}'. Run `python -m app.models.train` first."
+            raise PredictionUnavailableError(
+                f"No trained model for crop '{crop_id}' yet. Run an ETL backfill, then "
+                "`python -m app.models.train` (or use the admin page)."
             )
         _MODEL_CACHE[crop_id] = joblib.load(path)
     return _MODEL_CACHE[crop_id]
@@ -80,12 +88,64 @@ def _explanation(region_name: str, crop_name: str, score: float, level: str, day
     return text
 
 
+def _recent_price_trend_pct(price_df) -> float | None:
+    """Signed % change in price over the trailing ~4 weeks — a plain observed fact (not a
+    model prediction; the model's label discards direction, see features.py's module
+    docstring), used only to give farmers a simple "prices have been rising/falling" read
+    alongside the risk score."""
+    if price_df.empty:
+        return None
+    df = price_df.assign(date=pd.to_datetime(price_df["date"])).sort_values("date")
+    latest_date = df["date"].iloc[-1]
+    latest_price = df["modalPriceRsPerQuintal"].iloc[-1]
+    baseline = df[df["date"] <= latest_date - pd.Timedelta(days=28)]
+    if baseline.empty or baseline["modalPriceRsPerQuintal"].iloc[-1] == 0:
+        return None
+    baseline_price = baseline["modalPriceRsPerQuintal"].iloc[-1]
+    return float((latest_price - baseline_price) / baseline_price * 100)
+
+
+def _plain_summary(crop_name: str, region_name: str, trend_pct: float | None, level: str) -> str:
+    if trend_pct is None:
+        trend_phrase = "Recent price direction isn't clear yet from the available data."
+    elif trend_pct > 5:
+        trend_phrase = (
+            f"{crop_name} prices in {region_name} have been going up lately "
+            f"(about {trend_pct:.0f}% over the past month)."
+        )
+    elif trend_pct < -5:
+        trend_phrase = (
+            f"{crop_name} prices in {region_name} have been going down lately "
+            f"(about {abs(trend_pct):.0f}% over the past month)."
+        )
+    else:
+        trend_phrase = f"{crop_name} prices in {region_name} have stayed fairly steady over the past month."
+
+    outlook = {
+        "low": "Prices aren't expected to change much in the near term.",
+        "medium": "There's a moderate chance prices could shift noticeably in the coming weeks.",
+        "high": "Prices are at high risk of a sharp change in the coming weeks — worth watching closely.",
+    }[level]
+
+    return f"{trend_phrase} {outlook}"
+
+
 def predict(region_id: str, crop_id: str) -> dict:
     region = REGIONS_BY_ID[region_id]
     crop = CROPS_BY_ID[crop_id]
     artifact = _load_model(crop_id)
 
-    features_df = build_feature_frame(region_id, crop_id, weeks=8, with_label=False)
+    end = date.today()
+    start = end - timedelta(days=LOOKBACK_DAYS)
+    weather_df = load_weather(region_id, start, end)
+    ndvi_df = load_ndvi(region_id, start, end)
+    price_df = load_prices(region_id, crop_id, start, end)
+
+    features_df = build_feature_and_label_frame(weather_df, ndvi_df, price_df, with_label=False)
+    if features_df.empty:
+        raise PredictionUnavailableError(
+            f"Not enough recent real data for '{region.name}'/'{crop.name}' yet — has the ETL run for this combination?"
+        )
     latest = features_df.iloc[-1]
 
     X = features_df.loc[[latest.name], artifact["feature_columns"]]
@@ -96,6 +156,7 @@ def predict(region_id: str, crop_id: str) -> dict:
     importances = artifact["meta"]["feature_importances"]
     factors = _factors(latest.to_dict(), importances)
     explanation = _explanation(region.name, crop.name, score, level, days, factors)
+    plain_summary = _plain_summary(crop.name, region.name, _recent_price_trend_pct(price_df), level)
 
     return {
         "region": region.name,
@@ -104,5 +165,6 @@ def predict(region_id: str, crop_id: str) -> dict:
         "riskScore": round(score, 1),
         "daysToBottleneck": days,
         "explanation": explanation,
+        "plainSummary": plain_summary,
         "factors": [{"label": f["label"], "contribution": round(f["contribution"], 3)} for f in factors],
     }

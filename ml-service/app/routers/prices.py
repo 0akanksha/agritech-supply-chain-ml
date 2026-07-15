@@ -1,6 +1,8 @@
+from datetime import date, timedelta
+
 from fastapi import APIRouter, HTTPException
 
-from app.data.synthetic import generate_prices
+from app.data.real_data import load_prices
 from app.reference_data import CROPS_BY_ID, REGIONS_BY_ID
 from app.schemas import PricePoint
 
@@ -13,5 +15,6 @@ def get_prices(region: str, crop: str) -> list[PricePoint]:
         raise HTTPException(status_code=404, detail=f"Unknown region '{region}'")
     if crop not in CROPS_BY_ID:
         raise HTTPException(status_code=404, detail=f"Unknown crop '{crop}'")
-    df = generate_prices(region, crop, weeks=52)
+    end = date.today()
+    df = load_prices(region, crop, end - timedelta(days=365), end).dropna()
     return [PricePoint(**row) for row in df.to_dict(orient="records")]

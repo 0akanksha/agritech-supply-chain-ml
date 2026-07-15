@@ -9,6 +9,7 @@ dist/
 ml-service/.venv/
 ml-service/**/__pycache__/
 ml-service/app/models/artifacts/
+ml-service/mlruns/
 *.pyc
 
 # editor/OS

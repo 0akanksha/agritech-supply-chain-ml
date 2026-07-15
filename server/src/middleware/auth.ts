@@ -7,6 +7,7 @@ declare global {
   namespace Express {
     interface Request {
       userId?: string;
+      userRole?: string;
     }
   }
 }
@@ -20,6 +21,7 @@ export function attachUser(req: Request, _res: Response, next: NextFunction) {
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload;
       req.userId = payload.id;
+      req.userRole = payload.role;
     } catch {
       // ignore invalid/expired token — treat as logged out
     }
@@ -30,6 +32,13 @@ export function attachUser(req: Request, _res: Response, next: NextFunction) {
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.userId) {
     return res.status(401).json({ error: "Not authenticated" });
+  }
+  next();
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.userRole !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
   }
   next();
 }

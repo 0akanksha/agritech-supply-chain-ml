@@ -1,4 +1,15 @@
-import type { Crop, CropHealthPoint, Prediction, PricePoint, Region, SavedFarm, User, WeatherPoint } from '@/types'
+import type {
+  Crop,
+  CropHealthPoint,
+  EtlRun,
+  Prediction,
+  PricePoint,
+  Region,
+  SavedFarm,
+  TrainingRun,
+  User,
+  WeatherPoint,
+} from '@/types'
 
 export class ApiError extends Error {
   status: number
@@ -89,4 +100,22 @@ export function saveFarm(input: { regionId: string; cropId: string; label?: stri
 
 export function deleteSavedFarm(id: string): Promise<void> {
   return api.delete(`/api/farms/${id}`)
+}
+
+// --- Admin: ETL + training triggers and status ---
+
+export function fetchEtlStatus(): Promise<{ runs: EtlRun[] }> {
+  return api.get('/api/admin/etl/status')
+}
+
+export function runEtl(): Promise<{ status: string }> {
+  return api.post('/api/admin/etl/run')
+}
+
+export function runTraining(): Promise<{ status: string }> {
+  return api.post('/api/admin/train/run')
+}
+
+export function fetchTrainingRuns(): Promise<{ runs: TrainingRun[] }> {
+  return api.get('/api/admin/runs')
 }

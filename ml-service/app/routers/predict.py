@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from app.models.predict import ModelNotTrainedError, predict
+from app.models.predict import PredictionUnavailableError, predict
 from app.reference_data import CROPS_BY_ID, REGIONS_BY_ID
 from app.schemas import Prediction
 
@@ -15,6 +15,6 @@ def get_prediction(region: str, crop: str) -> Prediction:
         raise HTTPException(status_code=404, detail=f"Unknown crop '{crop}'")
     try:
         result = predict(region, crop)
-    except ModelNotTrainedError as e:
+    except PredictionUnavailableError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     return Prediction(**result)

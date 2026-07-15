@@ -4,48 +4,106 @@ Small farmers face volatile mandi (wholesale market) pricing and climate risk. T
 fuses weather, satellite crop-health, and mandi price trends into regional ML models that flag
 localized supply-chain bottlenecks before they hit.
 
-**Phase 2 (current)**: Express + Neon Postgres + JWT auth sit in front of the Phase 1 ML service.
-The dashboard itself is still public and still runs on synthetic weather/satellite/price data —
-what's new is accounts: farmers can sign up, save the region/crop combinations they care about,
-and check them on a "My Farms" page. See the roadmap below for what comes next.
+**Phase 3 (current)**: real weather (Open-Meteo) and real satellite crop-health (NASA/ORNL DAAC
+MODIS NDVI) feed the dashboard and the models. Mandi prices are placeholder demo data until a
+free data.gov.in API key is connected (see "Connecting real mandi prices" below) — once it is,
+real Agmarknet data replaces the placeholder automatically. The bottleneck-risk label is now a
+genuine, backtestable target (future realized price volatility, not a synthetic formula — see
+"How the model works"), trained runs are tracked in MLflow, and a seeded admin account can
+trigger ETL refreshes and retraining from an admin page.
 
 ## Architecture
 
 ```
 AgriTech/
-├── src/                      # React + Vite + TS frontend
-│   ├── pages/                  # Dashboard, Login, Signup, Farms ("My Farms")
-│   ├── context/AuthContext.tsx # signup/login/logout/me
-│   ├── components/             # WeatherPanel, CropHealthPanel, PriceTrendChart, RiskAlert,
-│   │                            # RiskBadge, Header, ProtectedRoute
-│   └── lib/api.ts              # generic fetch helper + typed calls to /api/auth, /api/farms,
-│                                # /api/ml/*
-├── server/                    # Express + Drizzle backend (NEW in Phase 2)
-│   ├── src/db/schema.ts        # users, savedFarms
-│   ├── src/routes/auth.routes.ts    # signup, login, logout, me (JWT in httpOnly cookie)
-│   ├── src/routes/farms.routes.ts   # requireAuth: list/create/delete saved farms
-│   ├── src/routes/ml.routes.ts      # public thin proxy -> the Python ML service
-│   └── src/index.ts            # single process: serves the API, and the frontend itself
-│                                # (Vite in middleware mode in dev, static dist in prod)
-└── ml-service/                 # Python FastAPI service — data + ML (unchanged from Phase 1)
+├── src/                          # React + Vite + TS frontend
+│   ├── pages/                      # Dashboard, Login, Signup, Farms, Admin
+│   ├── context/AuthContext.tsx     # signup/login/logout/me
+│   ├── components/                 # WeatherPanel, CropHealthPanel, PriceTrendChart, RiskAlert,
+│   │                                # RiskBadge, Header, ProtectedRoute, AdminRoute
+│   └── lib/api.ts                  # generic fetch helper + typed calls to /api/auth,
+│                                    # /api/farms, /api/ml/*, /api/admin/*
+├── server/                        # Express + Drizzle backend
+│   ├── src/db/schema.ts            # users (+ role), savedFarms
+│   ├── src/lib/ensureAdmin.ts      # seeds one admin from ADMIN_EMAIL/ADMIN_PASSWORD
+│   ├── src/routes/auth.routes.ts   # signup, login, logout, me (JWT in httpOnly cookie)
+│   ├── src/routes/farms.routes.ts  # requireAuth: list/create/delete saved farms
+│   ├── src/routes/ml.routes.ts     # public thin proxy -> the Python ML service
+│   ├── src/routes/admin.routes.ts  # requireAuth+requireAdmin: proxy -> ML service /admin/*
+│   └── src/index.ts                # single process: serves the API and the frontend itself
+│                                    # (Vite in middleware mode in dev, static dist in prod)
+└── ml-service/                    # Python FastAPI service — data + ML
     ├── app/
-    │   ├── reference_data.py   # 6 Indian mandi regions × 5 crops
-    │   ├── data/synthetic.py   # seeded weather/NDVI/price generators
-    │   ├── data/features.py    # weekly feature engineering + rule-based synthetic label
-    │   ├── models/train.py     # trains + saves one RandomForestRegressor per crop
-    │   ├── models/predict.py   # loads a model, scores a region/crop, explains the score
-    │   └── routers/            # regions, crops, weather, satellite, prices, predict
-    └── tests/test_model.py     # pytest: every region×crop predicts a valid risk score
+    │   ├── reference_data.py       # 6 Indian mandi regions (+ lat/lon) × 5 crops
+    │   ├── db.py, schema.sql, migrate.py   # this service's own Postgres tables, in a
+    │   │                            # separate `ml` schema (see db.py's docstring for why)
+    │   ├── data/
+    │   │   ├── synthetic.py        # seeded generators — now a test-fixture generator only
+    │   │   ├── real_data.py        # Postgres reads, same shape as synthetic.py's output
+    │   │   └── features.py         # pure feature/label function fed by either source
+    │   ├── etl/                    # weather.py (Open-Meteo), satellite.py (MODIS),
+    │   │                            # prices.py (Agmarknet), run.py (orchestrator + status),
+    │   │                            # seed_placeholder_prices.py (see below)
+    │   ├── models/train.py         # trains + MLflow-logs one model per crop
+    │   ├── models/predict.py       # loads a model, scores a region/crop, explains the score
+    │   └── routers/                # regions, crops, weather, satellite, prices, predict, admin
+    └── tests/test_model.py         # pytest: pure feature/label logic, offline, no DB/network
 ```
 
-Express (port 4000) is now the single browser-facing process, matching the other apps in this
-workspace: it serves the frontend itself and owns `/api/auth`, `/api/farms`, and `/api/ml`
-(a thin server-side proxy to the Python service on port 8000 — the browser never talks to it
-directly). The ML service and its pytest suite are otherwise untouched from Phase 1.
+Express (port 4000) is the single browser-facing process: it serves the frontend and owns
+`/api/auth`, `/api/farms`, `/api/ml` (public proxy), and `/api/admin` (admin-only proxy) to the
+Python service on port 8000, which the browser never talks to directly.
 
-**Bottleneck Risk Score**: a 0–100 composite of predicted price volatility, crop-health (NDVI)
-trend, and weather stress (drought/excess-rain), learned by a small scikit-learn model trained on
-synthetic labeled history — a real (if demo-scale) supervised learning task, not a lookup table.
+## How the model works
+
+Weather and NDVI are model **inputs**, pulled from real APIs and cached in Postgres. The
+**label** — what the model is trained to predict — is *future realized price volatility*:
+for each week, "how big was the worst mandi price swing over the following month," computed
+directly from real historical prices (not a rule-of-thumb formula, like Phase 1's synthetic
+version was). That makes it a genuine, backtestable supervised-learning target: train on the
+past, test on the most recent slice (time-aware split, not random — random would leak future
+price info across the split). Crops without enough real price history yet are skipped, not
+crashed; the dashboard shows a clear "not enough data yet" message instead of a fake score.
+
+Because the label discards direction (it's a magnitude of swing, not up-vs-down), the model
+can't honestly claim to predict *which way* prices will move. The dashboard's plain-language
+summary is upfront about this distinction: it states the recent price trend as an observed
+fact (computed directly from real price history, not model output) alongside the model's risk
+outlook, rather than implying the model forecasts direction.
+
+Each training run is logged to **MLflow** (local file-store backend — no server process
+required) for experiment tracking/versioning: `cd ml-service && .venv/bin/mlflow ui
+--backend-store-uri file:./mlruns` to browse it. The fitted model is also written to
+`app/models/artifacts/{crop}.joblib`, which is what actually serves predictions — MLflow is
+for history/versioning, not the request-time path.
+
+## Real data sources
+
+- **Weather**: [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api)
+  — free, no key.
+- **Satellite NDVI**: [ORNL DAAC MODIS subset service](https://modis.ornl.gov/data/modis_webservice.html)
+  (`MOD13Q1`, 16-day composites) — free, no key. NDVI is region-level only (satellites don't see
+  crop labels), shared across that region's crops.
+- **Mandi prices**: [data.gov.in Agmarknet](https://www.data.gov.in/apis/9ef84268-d588-465a-a308-a864a43d0070)
+  — free, but needs a personal API key (see below). Matched by state + commodity and aggregated
+  to a daily state-wide mean modal price, not one exact market (the free API can't be reliably
+  pre-mapped to a specific mandi per region).
+
+### Connecting real mandi prices
+
+1. Sign up at [data.gov.in](https://www.data.gov.in) and generate an API key (My Account → API
+   keys). Registration goes through the Jan Parichay government SSO and its OTP delivery is
+   sometimes flaky — if it fails, try again in a few minutes, try email OTP instead of SMS, or
+   contact `support-parichay@nic.in` / `1800-111-555`.
+2. Put the key in `ml-service/.env` as `DATA_GOV_IN_API_KEY`.
+3. Run an ETL refresh (admin page "Run ETL now", or `cd ml-service && .venv/bin/python -m
+   app.etl.run`) and then retrain (admin page "Retrain models", or `.venv/bin/python -m
+   app.models.train`). Real Agmarknet rows overwrite the placeholder ones for the same
+   region/crop/date automatically — no manual cleanup.
+
+Until then, `ml-service/app/etl/seed_placeholder_prices.py` seeds synthetic demo prices (tagged
+`source='synthetic_placeholder'` in the `mandi_prices` table) so the price chart, training, and
+predictions all have something to work with.
 
 ## Running locally
 
@@ -56,35 +114,39 @@ Requires Node 20+, Python 3.11+, and a Postgres database (this project uses
 # one-time setup
 npm install
 npm install --prefix server
-cp server/.env.example server/.env   # fill in DATABASE_URL and JWT_SECRET
-npm run db:push                       # creates the users/saved_farms tables
+cp server/.env.example server/.env      # DATABASE_URL, JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
+cp ml-service/.env.example ml-service/.env   # same DATABASE_URL; DATA_GOV_IN_API_KEY optional
+npm run db:push                          # creates users/saved_farms (Express)
 
 cd ml-service
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m app.models.train   # trains and saves the per-crop models
+.venv/bin/python -m app.migrate                    # creates this service's own tables
+.venv/bin/python -m app.etl.run                    # backfills real weather + NDVI (~10 min;
+                                                     # prices skip cleanly without an API key)
+.venv/bin/python -m app.etl.seed_placeholder_prices  # optional: demo prices until you have a key
+.venv/bin/python -m app.models.train
 cd ..
 
 # every time
 npm run dev   # runs Express (4000, serving the app + API) and uvicorn (8000) together
 ```
 
-Open http://localhost:4000 — the dashboard works without an account; sign up to unlock
-"Save this farm" and the **My Farms** page.
+Open http://localhost:4000 — the dashboard works without an account; sign up to unlock "Save
+this farm" and **My Farms**. Log in with the seeded `ADMIN_EMAIL`/`ADMIN_PASSWORD` to reach
+**Admin** in the nav and trigger ETL/retraining from the UI instead of the CLI.
 
 Other useful commands:
 - `npm run lint` — oxlint on the frontend
 - `npm run build:all` — production build of both the frontend and the server
-- `cd ml-service && .venv/bin/python -m pytest tests/` — pipeline sanity tests (train → predict,
-  every region × crop combination)
+- `cd ml-service && .venv/bin/python -m pytest tests/` — offline feature/label pipeline tests
+  (no DB or network needed)
+- `cd ml-service && .venv/bin/mlflow ui --backend-store-uri file:./mlruns` — browse training runs
 
 ## Roadmap
 
-- **Phase 3 — Real data + MLOps**: swap the synthetic generators for real sources (Open-Meteo for
-  weather, Sentinel/MODIS NDVI for satellite, Agmarknet/data.gov.in for mandi prices); add a
-  scheduled ETL pulling data into Postgres; add model versioning, scheduled retraining, and basic
-  experiment tracking. This is also the natural point to revisit an admin role, once there's
-  reference data and retraining jobs for one to actually administer.
 - **Phase 4 — DevOps/Deploy**: Dockerize the ML service, add CI (lint+build on push), deploy the
   Express+React app to Render and the ML service as a second Render web service, wire health
-  checks and env vars, then go live.
+  checks and env vars, then go live. Also the point to revisit auth between Express and the ML
+  service (currently trusted-network-only, fine for local dev) and a real scheduler for periodic
+  ETL refreshes (currently manual/admin-triggered) — e.g. Render Cron Jobs.

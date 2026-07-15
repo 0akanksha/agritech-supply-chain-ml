@@ -48,4 +48,5 @@ class Prediction(BaseModel):
     riskScore: float
     daysToBottleneck: int | None
     explanation: str
+    plainSummary: str
     factors: list[RiskFactor]

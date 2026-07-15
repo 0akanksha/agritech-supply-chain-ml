@@ -1,7 +1,10 @@
-"""Static reference data for Phase 1: a handful of major mandi regions and crops.
+"""Static reference data: a handful of major mandi regions and crops.
 
-Real Agmarknet/IMD/satellite integrations replace this in Phase 3 — for now these
-ids just seed the synthetic data generators deterministically.
+`state` doubles as the Agmarknet state filter (see app/etl/prices.py); `latitude`/
+`longitude` are the real-world join keys for Open-Meteo (weather) and the ORNL DAAC MODIS
+subset service (satellite NDVI) — see app/etl/weather.py and app/etl/satellite.py.
+`base_temp_c`/`base_rainfall_mm` are used only by app/data/synthetic.py, which is now a
+test-fixture generator (see app/data/features.py), not part of the real data path.
 """
 
 from __future__ import annotations
@@ -14,7 +17,9 @@ class Region:
     id: str
     name: str
     state: str
-    # Baseline climate skew used by the synthetic generators, roughly modeling
+    latitude: float
+    longitude: float
+    # Baseline climate skew used by the synthetic test-fixture generator, roughly modeling
     # each region's real climate (drier/hotter vs. wetter/cooler).
     base_temp_c: float
     base_rainfall_mm: float
@@ -31,12 +36,12 @@ class Crop:
 
 
 REGIONS: list[Region] = [
-    Region("nashik", "Nashik", "Maharashtra", base_temp_c=26.0, base_rainfall_mm=2.5),
-    Region("pune", "Pune", "Maharashtra", base_temp_c=24.0, base_rainfall_mm=2.0),
-    Region("ludhiana", "Ludhiana", "Punjab", base_temp_c=22.0, base_rainfall_mm=1.6),
-    Region("agra", "Agra", "Uttar Pradesh", base_temp_c=27.0, base_rainfall_mm=1.4),
-    Region("bengaluru", "Bengaluru", "Karnataka", base_temp_c=23.0, base_rainfall_mm=3.0),
-    Region("indore", "Indore", "Madhya Pradesh", base_temp_c=25.0, base_rainfall_mm=2.1),
+    Region("nashik", "Nashik", "Maharashtra", latitude=19.9975, longitude=73.7898, base_temp_c=26.0, base_rainfall_mm=2.5),
+    Region("pune", "Pune", "Maharashtra", latitude=18.5204, longitude=73.8567, base_temp_c=24.0, base_rainfall_mm=2.0),
+    Region("ludhiana", "Ludhiana", "Punjab", latitude=30.9010, longitude=75.8573, base_temp_c=22.0, base_rainfall_mm=1.6),
+    Region("agra", "Agra", "Uttar Pradesh", latitude=27.1767, longitude=78.0081, base_temp_c=27.0, base_rainfall_mm=1.4),
+    Region("bengaluru", "Bengaluru", "Karnataka", latitude=12.9716, longitude=77.5946, base_temp_c=23.0, base_rainfall_mm=3.0),
+    Region("indore", "Indore", "Madhya Pradesh", latitude=22.7196, longitude=75.8577, base_temp_c=25.0, base_rainfall_mm=2.1),
 ]
 
 CROPS: list[Crop] = [

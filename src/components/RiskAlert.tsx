@@ -4,13 +4,27 @@ import RiskBadge from '@/components/RiskBadge'
 interface Props {
   prediction: Prediction | null
   loading: boolean
+  error?: string | null
 }
 
-export default function RiskAlert({ prediction, loading }: Props) {
-  if (loading || !prediction) {
+export default function RiskAlert({ prediction, loading, error }: Props) {
+  if (loading) {
     return (
       <div className="rounded-2xl border border-[var(--color-line)] bg-white p-5">
         <div className="h-40 animate-pulse rounded-lg bg-[var(--color-paper-soft)]" />
+      </div>
+    )
+  }
+
+  if (error || !prediction) {
+    return (
+      <div className="rounded-2xl border border-[var(--color-line)] bg-white p-5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+          Bottleneck risk
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink-soft)]">
+          {error ?? 'No prediction available for this region/crop yet.'}
+        </p>
       </div>
     )
   }
@@ -35,7 +49,12 @@ export default function RiskAlert({ prediction, loading }: Props) {
         </p>
       )}
 
-      <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink)]">{prediction.explanation}</p>
+      <p className="mt-3 rounded-lg bg-[var(--color-brand-soft)] px-3 py-2.5 text-sm font-medium leading-relaxed text-[var(--color-brand-dark)]">
+        {prediction.plainSummary}
+      </p>
+
+      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">Details</p>
+      <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink)]">{prediction.explanation}</p>
 
       <div className="mt-4 space-y-2">
         {prediction.factors.map((f) => (

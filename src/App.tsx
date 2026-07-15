@@ -1,10 +1,12 @@
 import { Route, Routes } from 'react-router-dom'
 import Header from '@/components/Header'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import AdminRoute from '@/components/AdminRoute'
 import Dashboard from '@/pages/Dashboard'
 import Login from '@/pages/Login'
 import Signup from '@/pages/Signup'
 import Farms from '@/pages/Farms'
+import Admin from '@/pages/Admin'
 
 export default function App() {
   return (
@@ -20,6 +22,14 @@ export default function App() {
             <ProtectedRoute>
               <Farms />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <Admin />
+            </AdminRoute>
           }
         />
       </Routes>

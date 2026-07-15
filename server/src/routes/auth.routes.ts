@@ -11,7 +11,7 @@ import { HttpError } from "../middleware/errorHandler.js";
 export const authRouter = Router();
 
 function toPublicUser(user: typeof users.$inferSelect) {
-  return { id: user.id, fullName: user.fullName, email: user.email };
+  return { id: user.id, fullName: user.fullName, email: user.email, role: user.role };
 }
 
 const signupSchema = z.object({

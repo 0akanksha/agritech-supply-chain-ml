@@ -5,10 +5,11 @@ export const AUTH_COOKIE_NAME = "auth_token";
 
 export interface AuthPayload {
   id: string;
+  role: string;
 }
 
-export function signToken(user: { id: string }): string {
-  return jwt.sign({ id: user.id }, process.env.JWT_SECRET!, { expiresIn: "7d" });
+export function signToken(user: { id: string; role: string }): string {
+  return jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET!, { expiresIn: "7d" });
 }
 
 export function setAuthCookie(res: Response, token: string) {

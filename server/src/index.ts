@@ -9,9 +9,11 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { attachUser } from "./middleware/auth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { ensureAdminSeeded } from "./lib/ensureAdmin.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { farmsRouter } from "./routes/farms.routes.js";
 import { mlRouter } from "./routes/ml.routes.js";
+import { adminRouter } from "./routes/admin.routes.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -25,6 +27,7 @@ app.use(attachUser);
 app.use("/api/auth", authRouter);
 app.use("/api/farms", farmsRouter);
 app.use("/api/ml", mlRouter);
+app.use("/api/admin", adminRouter);
 
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -35,6 +38,8 @@ app.use(errorHandler);
 const PORT = Number(process.env.PORT) || 4000;
 
 async function start() {
+  await ensureAdminSeeded();
+
   if (process.env.NODE_ENV === "production") {
     const distDir = path.resolve(import.meta.dirname, "../../dist");
     app.use(express.static(distDir));

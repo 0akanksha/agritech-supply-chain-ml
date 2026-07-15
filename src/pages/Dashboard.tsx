@@ -24,7 +24,9 @@ export default function Dashboard() {
 
   const [loadingOptions, setLoadingOptions] = useState(true)
   const [loadingData, setLoadingData] = useState(false)
+  const [loadingPrediction, setLoadingPrediction] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [predictionError, setPredictionError] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
@@ -46,20 +48,26 @@ export default function Dashboard() {
     setLoadingData(true)
     setError(null)
     setSaveMessage(null)
-    Promise.all([
-      fetchWeather(regionId),
-      fetchCropHealth(regionId, cropId),
-      fetchPrices(regionId, cropId),
-      fetchPrediction(regionId, cropId),
-    ])
-      .then(([weatherData, healthData, priceData, predictionData]) => {
+    Promise.all([fetchWeather(regionId), fetchCropHealth(regionId, cropId), fetchPrices(regionId, cropId)])
+      .then(([weatherData, healthData, priceData]) => {
         setWeather(weatherData)
         setCropHealth(healthData)
         setPrices(priceData)
-        setPrediction(predictionData)
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load data'))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load chart data'))
       .finally(() => setLoadingData(false))
+
+    // Fetched separately: a region/crop with no trained model yet (503) is an expected,
+    // recoverable state — it shouldn't blank out the charts above, which load independently.
+    setLoadingPrediction(true)
+    setPrediction(null)
+    setPredictionError(null)
+    fetchPrediction(regionId, cropId)
+      .then(setPrediction)
+      .catch((e: unknown) =>
+        setPredictionError(e instanceof ApiError ? e.message : 'Failed to load the risk prediction'),
+      )
+      .finally(() => setLoadingPrediction(false))
   }, [regionId, cropId])
 
   const handleSaveFarm = async () => {
@@ -88,7 +96,9 @@ export default function Dashboard() {
           </p>
           <h1 className="mt-1 text-2xl font-bold text-[var(--color-ink)]">Regional bottleneck dashboard</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-soft)]">
-            Weather, crop health, and mandi price signals are synthetic for now — see the README roadmap.
+            Weather (Open-Meteo) and crop health (NASA MODIS satellite NDVI) are real. Mandi prices
+            are placeholder demo data until a data.gov.in API key is connected (real Agmarknet data
+            will automatically replace it) — see the README roadmap.
           </p>
         </div>
       </header>
@@ -142,7 +152,7 @@ export default function Dashboard() {
 
         {error && (
           <div className="mt-4 rounded-lg border border-[var(--color-risk-high)]/30 bg-[var(--color-risk-high)]/10 px-4 py-3 text-sm text-[var(--color-risk-high)]">
-            {error}. Is the ML service running on port 8000?
+            {error}
           </div>
         )}
 
@@ -155,7 +165,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div>
-            <RiskAlert prediction={prediction} loading={loadingData} />
+            <RiskAlert prediction={prediction} loading={loadingPrediction} error={predictionError} />
           </div>
         </div>
       </main>

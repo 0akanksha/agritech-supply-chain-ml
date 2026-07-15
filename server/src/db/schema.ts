@@ -5,6 +5,9 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  // 'admin' accounts are seeded from ADMIN_EMAIL/ADMIN_PASSWORD at startup (see
+  // lib/ensureAdmin.ts) — there's no public admin signup, matching the other apps here.
+  role: text("role").notNull().default("farmer"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

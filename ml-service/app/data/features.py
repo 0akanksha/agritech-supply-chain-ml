@@ -1,16 +1,19 @@
-"""Weekly feature engineering shared by training and inference, plus the rule-based
-synthetic label used to train the demo model (see train.py for why this is legitimate
-supervised learning and not a lookup table)."""
+"""Pure weekly feature engineering + labeling, shared by training and inference.
+
+`build_feature_and_label_frame` takes three already-loaded DataFrames (weather/ndvi/price —
+same column shapes whether they came from real Postgres data via app/data/real_data.py, or
+from the synthetic test-fixture generator app/data/synthetic.py) and doesn't know or care
+which. That's deliberate: it keeps this module's logic — the part with real correctness risk
+(rolling windows, label construction, no lookahead leakage) — unit-testable without a
+database or network, while train.py/predict.py wire it to real data in production.
+
+Label: real, backtestable "future realized price volatility" — see train.py's module
+docstring for why this replaced the old rule-based-on-synthetic-inputs label from Phase 1.
+"""
 
 from __future__ import annotations
 
-import hashlib
-from datetime import date
-
-import numpy as np
 import pandas as pd
-
-from app.data.synthetic import generate_ndvi, generate_prices, generate_weather, weekly_weather_stress
 
 FEATURE_COLUMNS = [
     "price_volatility_4w",
@@ -21,8 +24,8 @@ FEATURE_COLUMNS = [
     "temp_anomaly_4w",
 ]
 
-# Drivers that feed the rule-based label directly (see _rule_based_risk below); ndvi_level is
-# an auxiliary model input that isn't shown as an explanation "factor" on its own.
+# All but ndvi_level double as "drivers" shown in the explanation UI (see predict.py);
+# ndvi_level (absolute health level, not a trend) is an auxiliary model input only.
 DRIVER_COLUMNS = [c for c in FEATURE_COLUMNS if c != "ndvi_level"]
 
 FEATURE_LABELS = {
@@ -34,57 +37,98 @@ FEATURE_LABELS = {
     "temp_anomaly_4w": "Heat stress",
 }
 
+LABEL_HORIZON_WEEKS = 4
+# A 30% price swing within a month maps to the max risk score (100).
+LABEL_CALIBRATION = 0.30
 
-def _rule_based_risk(df: pd.DataFrame, rng: np.random.Generator) -> pd.Series:
-    vol_term = np.clip(df["price_volatility_4w"] / 0.06, 0, 1)
-    trend_term = np.clip(df["price_trend_abs_4w"] / 0.15, 0, 1)
-    ndvi_term = np.clip(-df["ndvi_trend_4w"] / 0.06, 0, 1)
-    drought_term = np.clip(-df["rain_anomaly_4w"] / 1.5, 0, 1)
-    heat_term = np.clip(df["temp_anomaly_4w"] / 1.5, 0, 1)
 
-    risk = 100 * (
-        0.35 * vol_term + 0.20 * trend_term + 0.25 * ndvi_term + 0.12 * drought_term + 0.08 * heat_term
+def _weekly_weather_stress(weather_daily: pd.DataFrame) -> pd.DataFrame:
+    """Daily weather -> weekly avg temp / total rainfall + z-score anomalies."""
+    df = weather_daily.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    weekly = df.resample("W-MON", on="date").agg(
+        avgTempC=("tempC", "mean"),
+        totalRainfallMm=("rainfallMm", "sum"),
     )
-    noise = rng.normal(0, 4, size=len(df))
-    return np.clip(risk + noise, 0, 100)
+    weekly["rainAnomaly"] = (weekly["totalRainfallMm"] - weekly["totalRainfallMm"].mean()) / (
+        weekly["totalRainfallMm"].std(ddof=0) + 1e-6
+    )
+    weekly["tempAnomaly"] = (weekly["avgTempC"] - weekly["avgTempC"].mean()) / (
+        weekly["avgTempC"].std(ddof=0) + 1e-6
+    )
+    return weekly.reset_index()
 
 
-def build_feature_frame(
-    region_id: str,
-    crop_id: str,
-    weeks: int = 104,
-    end: date | None = None,
+def _weekly_ndvi(ndvi_df: pd.DataFrame, weekly_dates: pd.Series) -> pd.Series:
+    """NDVI updates roughly every ~16 days (real) or weekly (synthetic fixtures) — align
+    onto the weekly grid by carrying forward the most recent observation."""
+    if ndvi_df.empty:
+        return pd.Series([None] * len(weekly_dates), index=weekly_dates.index)
+    ndvi_sorted = ndvi_df.assign(date=pd.to_datetime(ndvi_df["date"])).sort_values("date")
+    aligned = pd.merge_asof(
+        pd.DataFrame({"date": weekly_dates}).sort_values("date"),
+        ndvi_sorted[["date", "ndvi"]],
+        on="date",
+        direction="backward",
+    )
+    return aligned.set_index(weekly_dates.index)["ndvi"]
+
+
+def _weekly_price(price_df: pd.DataFrame) -> pd.DataFrame:
+    df = price_df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    weekly = df.resample("W-MON", on="date")["modalPriceRsPerQuintal"].mean()
+    return weekly.reset_index()
+
+
+def _future_volatility_label(price: pd.Series) -> pd.Series:
+    """label[t] = worst |pct change| from price[t] over the next LABEL_HORIZON_WEEKS weeks,
+    scaled 0-100. NaN for the trailing weeks whose future isn't in the frame — those rows
+    must be dropped before training (they'd otherwise silently look "risk-free")."""
+    n = len(price)
+    label = pd.Series(index=price.index, dtype=float)
+    for i in range(n):
+        future = price.iloc[i + 1 : i + 1 + LABEL_HORIZON_WEEKS]
+        if len(future) < LABEL_HORIZON_WEEKS or price.iloc[i] == 0:
+            label.iloc[i] = float("nan")
+            continue
+        worst_move = (future - price.iloc[i]).abs().max() / price.iloc[i]
+        label.iloc[i] = min(100.0, 100.0 * worst_move / LABEL_CALIBRATION)
+    return label
+
+
+def build_feature_and_label_frame(
+    weather_df: pd.DataFrame,
+    ndvi_df: pd.DataFrame,
+    price_df: pd.DataFrame,
+    *,
     with_label: bool = False,
 ) -> pd.DataFrame:
-    """Weekly feature rows for a region/crop. Set with_label=True to also attach the
-    rule-based synthetic bottleneck-risk label (used for training only)."""
-    end = end or date.today()
-    lookback = weeks + 8  # extra history so rolling/diff features have no leading NaNs left
+    """Weekly feature rows (+ optional label) from raw weather/ndvi/price DataFrames.
 
-    ndvi_df = generate_ndvi(region_id, crop_id, weeks=lookback, end=end)
-    price_df = generate_prices(region_id, crop_id, weeks=lookback, end=end)
-    weather_daily = generate_weather(region_id, days=lookback * 7 + 14, end=end)
-    stress_df = weekly_weather_stress(weather_daily).tail(lookback).reset_index(drop=True)
-    stress_df["date"] = stress_df["date"].dt.strftime("%Y-%m-%d")
+    weather_df: [date, tempC, rainfallMm, humidityPct] (daily)
+    ndvi_df: [date, ndvi] (any cadence)
+    price_df: [date, modalPriceRsPerQuintal] (any cadence)
+    """
+    weekly = _weekly_weather_stress(weather_df)
+    weekly["ndvi"] = _weekly_ndvi(ndvi_df, weekly["date"])
+    price_weekly = _weekly_price(price_df)
+    weekly = weekly.merge(price_weekly, on="date", how="inner").sort_values("date").reset_index(drop=True)
 
-    df = ndvi_df.merge(price_df, on="date").merge(
-        stress_df[["date", "rainAnomaly", "tempAnomaly"]], on="date"
-    )
-
-    price = df["modalPriceRsPerQuintal"]
+    price = weekly["modalPriceRsPerQuintal"]
     pct_change = price.pct_change()
-    df["price_volatility_4w"] = pct_change.rolling(4).std()
-    df["price_trend_abs_4w"] = price.pct_change(4).abs()
-    df["ndvi_level"] = df["ndvi"]
-    df["ndvi_trend_4w"] = df["ndvi"].diff(4)
-    df["rain_anomaly_4w"] = df["rainAnomaly"].rolling(4).mean()
-    df["temp_anomaly_4w"] = df["tempAnomaly"].rolling(4).mean()
-
-    df = df.dropna(subset=FEATURE_COLUMNS).reset_index(drop=True)
+    weekly["price_volatility_4w"] = pct_change.rolling(4).std()
+    weekly["price_trend_abs_4w"] = price.pct_change(4).abs()
+    weekly["ndvi_level"] = weekly["ndvi"]
+    weekly["ndvi_trend_4w"] = weekly["ndvi"].diff(4)
+    weekly["rain_anomaly_4w"] = weekly["rainAnomaly"].rolling(4).mean()
+    weekly["temp_anomaly_4w"] = weekly["tempAnomaly"].rolling(4).mean()
 
     if with_label:
-        seed_digest = hashlib.sha256(f"label|{region_id}|{crop_id}".encode()).digest()
-        rng = np.random.default_rng(int.from_bytes(seed_digest[:4], "big"))
-        df["bottleneck_risk"] = _rule_based_risk(df, rng)
+        weekly["bottleneck_risk"] = _future_volatility_label(price)
+        required = [*FEATURE_COLUMNS, "bottleneck_risk"]
+    else:
+        required = FEATURE_COLUMNS
 
-    return df.tail(weeks).reset_index(drop=True)
+    weekly["date"] = weekly["date"].dt.strftime("%Y-%m-%d")
+    return weekly.dropna(subset=required).reset_index(drop=True)

@@ -28,6 +28,12 @@ export default function Header() {
             </Link>
           )}
 
+          {!initializing && currentUser?.role === 'admin' && (
+            <Link to="/admin" className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
+              Admin
+            </Link>
+          )}
+
           {!initializing && currentUser ? (
             <div className="flex items-center gap-3">
               <span className="text-[var(--color-ink-soft)]">Hi, {currentUser.fullName.split(' ')[0]}</span>
