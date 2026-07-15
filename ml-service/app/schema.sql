@@ -51,3 +51,15 @@ CREATE TABLE IF NOT EXISTS etl_runs (
     rows_written integer,
     error text
 );
+
+-- Trained models, so a fresh container (Render free tier has no persistent disk — every
+-- deploy/cold-start gets a clean filesystem) can still serve predictions without retraining.
+-- train.py writes here AND to the local artifacts/{crop}.joblib file; predict.py prefers the
+-- local file (fast path for local dev) and falls back to this table if it's missing.
+CREATE TABLE IF NOT EXISTS model_artifacts (
+    crop_id text PRIMARY KEY,
+    model_bytes bytea NOT NULL,
+    feature_columns jsonb NOT NULL,
+    meta jsonb NOT NULL,
+    trained_at timestamptz NOT NULL DEFAULT now()
+);

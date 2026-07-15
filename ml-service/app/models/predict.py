@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 
 from app.data.features import DRIVER_COLUMNS, FEATURE_LABELS, build_feature_and_label_frame
 from app.data.real_data import load_ndvi, load_prices, load_weather
+from app.models.storage import load_artifact
 from app.reference_data import CROPS_BY_ID, REGIONS_BY_ID
 
-ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 # Enough real history for the rolling 4-week features to be non-null at the latest row,
 # with headroom for NDVI's ~16-day composite cadence — not a full retraining backfill.
 LOOKBACK_DAYS = 120
@@ -36,13 +34,13 @@ class PredictionUnavailableError(RuntimeError):
 
 def _load_model(crop_id: str) -> dict:
     if crop_id not in _MODEL_CACHE:
-        path = ARTIFACTS_DIR / f"{crop_id}.joblib"
-        if not path.exists():
+        artifact = load_artifact(crop_id)
+        if artifact is None:
             raise PredictionUnavailableError(
                 f"No trained model for crop '{crop_id}' yet. Run an ETL backfill, then "
                 "`python -m app.models.train` (or use the admin page)."
             )
-        _MODEL_CACHE[crop_id] = joblib.load(path)
+        _MODEL_CACHE[crop_id] = artifact
     return _MODEL_CACHE[crop_id]
 
 

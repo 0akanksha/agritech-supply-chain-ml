@@ -8,10 +8,11 @@ consequences here:
 - Crops without enough real history yet are skipped, not crashed (MIN_TRAINING_SAMPLES).
   predict.py raises a clear PredictionUnavailableError (-> 503) for those.
 
-Each successful run is logged to MLflow (local file-store backend — no server to run; browse
-with `mlflow ui --backend-store-uri file:./mlruns`) for experiment tracking/versioning, and
-the fitted model is ALSO saved to artifacts/{crop_id}.joblib — the simple, MLflow-independent
-path predict.py actually reads at request time, so serving never talks to MLflow.
+Each successful run is logged to MLflow (see MLFLOW_TRACKING_URI — file-store locally, Postgres
+in production; browse locally with `mlflow ui --backend-store-uri file:./mlruns`) for experiment
+tracking/versioning, and the fitted model is ALSO saved via app.models.storage (local joblib +
+Postgres) — the simple, MLflow-independent path predict.py actually reads at request time, so
+serving never talks to MLflow.
 
 Run from ml-service/: `python -m app.models.train`
 """
@@ -21,9 +22,7 @@ from __future__ import annotations
 import os
 import sys
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 
-import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
@@ -32,9 +31,9 @@ from sklearn.metrics import mean_absolute_error, r2_score
 
 from app.data.features import FEATURE_COLUMNS, build_feature_and_label_frame
 from app.data.real_data import load_ndvi, load_prices, load_weather
+from app.models.storage import save_artifact
 from app.reference_data import CROPS, REGIONS, Crop, Region
 
-ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 BACKFILL_DAYS = 730
 MIN_TRAINING_SAMPLES = 30
 TEST_FRACTION = 0.2
@@ -64,7 +63,6 @@ def _time_aware_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def train_all(end: date | None = None) -> dict:
     end = end or date.today()
-    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "file:./mlruns"))
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
 
@@ -122,7 +120,7 @@ def train_all(end: date | None = None) -> dict:
                 "feature_importances": importances,
             },
         }
-        joblib.dump(artifact, ARTIFACTS_DIR / f"{crop.id}.joblib")
+        save_artifact(crop.id, artifact)
         results[crop.id] = {"status": "trained", "n_samples": len(df), "r2_test": r2, "mae_test": mae}
         print(f"[train] {crop.id:8s} n={len(df):4d} r2_test={r2:.3f} mae_test={mae:.2f}", file=sys.stderr)
 
