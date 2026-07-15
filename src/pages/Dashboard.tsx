@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
-import { fetchCropHealth, fetchCrops, fetchPrediction, fetchPrices, fetchRegions, fetchWeather } from '@/lib/api'
+import { useNavigate } from 'react-router-dom'
+import { ApiError, fetchCropHealth, fetchCrops, fetchPrediction, fetchPrices, fetchRegions, fetchWeather, saveFarm } from '@/lib/api'
 import type { Crop, CropHealthPoint, Prediction, PricePoint, Region, WeatherPoint } from '@/types'
+import { useAuth } from '@/context/AuthContext'
 import WeatherPanel from '@/components/WeatherPanel'
 import CropHealthPanel from '@/components/CropHealthPanel'
 import PriceTrendChart from '@/components/PriceTrendChart'
 import RiskAlert from '@/components/RiskAlert'
 
 export default function Dashboard() {
+  const { currentUser } = useAuth()
+  const navigate = useNavigate()
+
   const [regions, setRegions] = useState<Region[]>([])
   const [crops, setCrops] = useState<Crop[]>([])
   const [regionId, setRegionId] = useState<string>('')
@@ -20,6 +25,9 @@ export default function Dashboard() {
   const [loadingOptions, setLoadingOptions] = useState(true)
   const [loadingData, setLoadingData] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([fetchRegions(), fetchCrops()])
@@ -37,6 +45,7 @@ export default function Dashboard() {
     if (!regionId || !cropId) return
     setLoadingData(true)
     setError(null)
+    setSaveMessage(null)
     Promise.all([
       fetchWeather(regionId),
       fetchCropHealth(regionId, cropId),
@@ -53,6 +62,23 @@ export default function Dashboard() {
       .finally(() => setLoadingData(false))
   }, [regionId, cropId])
 
+  const handleSaveFarm = async () => {
+    if (!currentUser) {
+      navigate('/login', { state: { from: '/' } })
+      return
+    }
+    setSaving(true)
+    setSaveMessage(null)
+    try {
+      await saveFarm({ regionId, cropId })
+      setSaveMessage('Saved to My Farms.')
+    } catch (e) {
+      setSaveMessage(e instanceof ApiError ? e.message : 'Failed to save this farm.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="min-h-screen">
       <header className="border-b border-[var(--color-line)] bg-white">
@@ -62,7 +88,7 @@ export default function Dashboard() {
           </p>
           <h1 className="mt-1 text-2xl font-bold text-[var(--color-ink)]">Regional bottleneck dashboard</h1>
           <p className="mt-1 text-sm text-[var(--color-ink-soft)]">
-            Phase 1 prototype — weather, crop health, and mandi price signals are synthetic.
+            Weather, crop health, and mandi price signals are synthetic for now — see the README roadmap.
           </p>
         </div>
       </header>
@@ -100,7 +126,19 @@ export default function Dashboard() {
               ))}
             </select>
           </label>
+
+          <div className="flex flex-col justify-end">
+            <button
+              onClick={handleSaveFarm}
+              disabled={saving || loadingOptions || !regionId || !cropId}
+              className="rounded-lg border border-[var(--color-brand)] px-4 py-2 text-sm font-medium text-[var(--color-brand)] hover:bg-[var(--color-brand-soft)] disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : currentUser ? 'Save this farm' : 'Log in to save this farm'}
+            </button>
+          </div>
         </div>
+
+        {saveMessage && <p className="mt-2 text-sm text-[var(--color-ink-soft)]">{saveMessage}</p>}
 
         {error && (
           <div className="mt-4 rounded-lg border border-[var(--color-risk-high)]/30 bg-[var(--color-risk-high)]/10 px-4 py-3 text-sm text-[var(--color-risk-high)]">

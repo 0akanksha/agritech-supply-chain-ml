@@ -7,15 +7,19 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -n web,ml -c blue,green \"vite\" \"npm run dev:ml\"",
+    "dev": "concurrently -n web,ml -c blue,green \"npm run dev --prefix server\" \"npm run dev:ml\"",
     "dev:ml": "cd ml-service && .venv/bin/uvicorn app.main:app --reload --port 8000",
     "build": "tsc -b && vite build",
+    "build:all": "npm run build && npm run build --prefix server",
+    "start": "npm run start --prefix server",
+    "db:push": "npm run db:push --prefix server",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.1",
     "recharts": "^3.9.2"
   },
   "devDependencies": {

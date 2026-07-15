@@ -42,3 +42,18 @@ export interface Prediction {
   explanation: string
   factors: RiskFactor[]
 }
+
+export interface User {
+  id: string
+  fullName: string
+  email: string
+}
+
+export interface SavedFarm {
+  id: string
+  userId: string
+  regionId: string
+  cropId: string
+  label: string | null
+  createdAt: string
+}

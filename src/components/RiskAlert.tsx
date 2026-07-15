@@ -1,14 +1,9 @@
-import type { Prediction, RiskLevel } from '@/types'
+import type { Prediction } from '@/types'
+import RiskBadge from '@/components/RiskBadge'
 
 interface Props {
   prediction: Prediction | null
   loading: boolean
-}
-
-const RISK_STYLES: Record<RiskLevel, { bg: string; text: string; label: string }> = {
-  low: { bg: 'bg-[var(--color-risk-low)]/10', text: 'text-[var(--color-risk-low)]', label: 'Low risk' },
-  medium: { bg: 'bg-[var(--color-risk-medium)]/10', text: 'text-[var(--color-risk-medium)]', label: 'Medium risk' },
-  high: { bg: 'bg-[var(--color-risk-high)]/10', text: 'text-[var(--color-risk-high)]', label: 'High risk' },
 }
 
 export default function RiskAlert({ prediction, loading }: Props) {
@@ -20,17 +15,13 @@ export default function RiskAlert({ prediction, loading }: Props) {
     )
   }
 
-  const style = RISK_STYLES[prediction.riskLevel]
-
   return (
     <div className="rounded-2xl border border-[var(--color-line)] bg-white p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
           Bottleneck risk
         </h2>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.bg} ${style.text}`}>
-          {style.label}
-        </span>
+        <RiskBadge level={prediction.riskLevel} />
       </div>
 
       <div className="mt-3 flex items-baseline gap-2">
