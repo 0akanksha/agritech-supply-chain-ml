@@ -1,11 +1,12 @@
 # One Render service, applied once as a Blueprint (New -> Blueprint, point at this repo, and
 # make sure it's actually the Blueprint flow — "New -> Web Service" auto-detects an environment
-# instead of reading this file, which is what broke the original two-service attempt). autoDeploy
-# is disabled on purpose — deploys are triggered by GitHub Actions
-# (.github/workflows/ci-deploy.yml) only after CI passes on main, via this service's Deploy Hook
-# (Settings tab once it exists), not on every push. See README's "Deploying" section for the
-# one-time manual setup this Blueprint doesn't cover (env var values, deploy hook -> GitHub
-# secret).
+# instead of reading this file, which is what broke the original two-service attempt).
+#
+# autoDeploy is on: Render redeploys directly on every push to the connected branch. An earlier
+# version of this file set it to false and gated deploys behind a GitHub Actions job that curled
+# a Render Deploy Hook only after CI passed (.github/workflows/ci.yml still runs those CI checks
+# — typecheck/lint/tests/docker build — on every push, just no longer wired to trigger a
+# deploy). Flip this back to false and re-add the hook-curling job to restore that gating.
 services:
   - type: web
     name: agritech
@@ -13,7 +14,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
-    autoDeploy: false
+    autoDeploy: true
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL

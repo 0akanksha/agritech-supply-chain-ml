@@ -19,10 +19,10 @@ refreshes and retraining from an admin page.
 
 ```
 AgriTech/
-├── .github/workflows/ci-deploy.yml   # CI on every push/PR; deploys (via a Render Deploy Hook)
-│                                      # only on push to main, only after CI passes
+├── .github/workflows/ci.yml       # typecheck/lint/tests/docker-build on every push/PR — a
+│                                    # signal, not a deploy gate right now, see "Deploying"
 ├── Dockerfile, .dockerignore      # the one image Render builds — see "Deploying"
-├── render.yaml                    # the single Render service (Blueprint), autoDeploy: false
+├── render.yaml                    # the single Render service (Blueprint), autoDeploy: true
 ├── src/                          # React + Vite + TS frontend
 │   ├── pages/                      # Dashboard, Login, Signup, Farms, Admin
 │   ├── context/AuthContext.tsx     # signup/login/logout/me
@@ -161,10 +161,13 @@ Other useful commands:
 
 ## Deploying
 
-One [Render](https://render.com) service (`render.yaml`, a Blueprint) plus a GitHub Actions
-pipeline that's the only thing allowed to trigger a deploy — Render's own auto-deploy-on-push is
-turned off (`autoDeploy: false`) so a bad push can't go live just because it was pushed; it has
-to pass CI first.
+One [Render](https://render.com) service (`render.yaml`, a Blueprint). `autoDeploy: true` —
+Render redeploys directly on every push to the connected branch; `.github/workflows/ci.yml` runs
+typecheck/lint/tests/docker-build on every push and PR too, but purely as a signal, not a gate —
+nothing currently stops a red CI run from having already deployed. (An earlier version gated
+deploys behind CI passing, via a GitHub Actions job that curled a Render Deploy Hook — dropped
+for now to keep the deploy path simpler while getting the first real deploy out. `render.yaml`'s
+comment on `autoDeploy` says how to bring that back.)
 
 It's one service, not two, because Express spawns the Python ML service itself as a child
 process inside the same container (`server/src/lib/embeddedMlService.ts`), bound to `127.0.0.1`
@@ -181,8 +184,7 @@ services to keep correctly configured, two Deploy Hooks, a secret to keep in syn
    Blueprint" will silently ignore `render.yaml`** and auto-detect a build/runtime for you
    (this happened once already: Render guessed "Python at the repo root" and "plain Node
    defaults," and both were wrong). Blueprint is the only path that actually reads this file's
-   `runtime: docker` / `dockerfilePath` settings. Nothing deploys automatically yet
-   (`autoDeploy: false`).
+   `runtime: docker` / `dockerfilePath` settings.
 2. **Fill in env vars** (Render dashboard → the service → Environment) — everything marked
    `sync: false` in `render.yaml`: `DATABASE_URL` (Neon), `ADMIN_EMAIL`, `ADMIN_PASSWORD`,
    `DATA_GOV_IN_API_KEY` (optional — leave blank to keep placeholder prices). `JWT_SECRET` is
@@ -195,16 +197,12 @@ services to keep correctly configured, two Deploy Hooks, a secret to keep in syn
    `db:push` against this same database once came within a TTY-prompt of dropping 4,600+ real
    ETL rows it didn't recognize (see `db.py`'s docstring) — that's also why Express and the ML
    service keep separate Postgres schemas (`public` vs `ml`) to this day.
-4. **Wire up GitHub Actions**: the service's Settings tab has a Deploy Hook URL. Add it as a repo
-   secret — `RENDER_DEPLOY_HOOK` (Settings → Secrets and variables → Actions, or `gh secret set
-   RENDER_DEPLOY_HOOK`).
 
 ### Day to day
 
-Push to `main` → `.github/workflows/ci-deploy.yml` runs typecheck/lint/tests for the frontend,
-server, and ML service (plus a `docker build` sanity check against the root `Dockerfile`) → if
-all pass, it `curl`s the Deploy Hook → Render rebuilds and redeploys. Pull requests run the same
-CI checks but never deploy.
+Push to `main` → Render rebuilds and redeploys directly. `.github/workflows/ci.yml` also runs
+typecheck/lint/tests/`docker build` on the same push (and on pull requests), so failures are
+visible on GitHub even though they don't block anything yet.
 
 ### Free-tier things worth knowing
 

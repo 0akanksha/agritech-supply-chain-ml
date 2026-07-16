@@ -1,4 +1,4 @@
-name: CI and deploy
+name: CI
 
 on:
   push:
@@ -55,15 +55,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build -f Dockerfile .
         # Sanity check only — confirms the image Render will build from actually builds.
-        # Doesn't push anywhere; Render builds its own copy from the same Dockerfile on deploy.
-
-  # Deploys only run for pushes to main, and only after every check above passes. The Render
-  # service has autoDeploy disabled (see render.yaml) specifically so this job is what controls
-  # when a deploy actually happens, not "any push to the connected branch."
-  deploy:
-    needs: [frontend, server, ml-service, docker-build]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy agritech
-        run: curl -fsS "${{ secrets.RENDER_DEPLOY_HOOK }}"
+        # Doesn't push anywhere; Render builds its own copy from the same Dockerfile on deploy
+        # (autoDeploy: true in render.yaml — Render deploys directly on push, not gated on
+        # these checks passing here. See render.yaml's comment for how to restore that gate.)
