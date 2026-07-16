@@ -4,17 +4,6 @@ Small farmers face volatile mandi (wholesale market) pricing and climate risk. T
 fuses weather, satellite crop-health, and mandi price trends into regional ML models that flag
 localized supply-chain bottlenecks before they hit.
 
-**Phase 4 (current)**: deployable, as a single Render service. A GitHub Actions pipeline runs CI
-(typecheck/lint/tests) on every push and, once it's green on `main`, triggers a deploy — Render's
-own auto-deploy-on-push is deliberately turned off so a deploy only ever happens after CI passes
-(see "Deploying" below). Real weather (Open-Meteo) and real satellite crop-health (NASA/ORNL DAAC
-MODIS NDVI) feed the dashboard and the models; mandi prices are placeholder demo data until a
-free data.gov.in API key is connected (see "Connecting real mandi prices") — once it is, real
-Agmarknet data replaces the placeholder automatically. The bottleneck-risk label is a genuine,
-backtestable target (future realized price volatility, not a synthetic formula — see "How the
-model works"), trained runs are tracked in MLflow, and a seeded admin account can trigger ETL
-refreshes and retraining from an admin page.
-
 ## Architecture
 
 ```
