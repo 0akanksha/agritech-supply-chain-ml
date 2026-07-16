@@ -2,6 +2,7 @@ import type {
   Crop,
   CropHealthPoint,
   EtlRun,
+  Forecast,
   Prediction,
   PricePoint,
   Region,
@@ -56,6 +57,10 @@ export function fetchCrops(): Promise<Crop[]> {
 
 export function fetchWeather(region: string): Promise<WeatherPoint[]> {
   return api.get(`/api/ml/weather?region=${encodeURIComponent(region)}`)
+}
+
+export function fetchForecast(region: string): Promise<Forecast> {
+  return api.get(`/api/ml/forecast?region=${encodeURIComponent(region)}`)
 }
 
 export function fetchCropHealth(region: string, crop: string): Promise<CropHealthPoint[]> {

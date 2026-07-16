@@ -33,6 +33,22 @@ class PricePoint(BaseModel):
     modalPriceRsPerQuintal: float
 
 
+class ForecastDay(BaseModel):
+    date: str
+    tempMaxC: float
+    tempMinC: float
+    rainfallMm: float
+    rainChancePct: float
+    conditionText: str
+    conditionEmoji: str
+
+
+class Forecast(BaseModel):
+    region: str
+    days: list[ForecastDay]
+    farmingTip: str
+
+
 RiskLevel = Literal["low", "medium", "high"]
 
 

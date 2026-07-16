@@ -26,6 +26,22 @@ export interface PricePoint {
   modalPriceRsPerQuintal: number
 }
 
+export interface ForecastDay {
+  date: string
+  tempMaxC: number
+  tempMinC: number
+  rainfallMm: number
+  rainChancePct: number
+  conditionText: string
+  conditionEmoji: string
+}
+
+export interface Forecast {
+  region: string
+  days: ForecastDay[]
+  farmingTip: string
+}
+
 export type RiskLevel = 'low' | 'medium' | 'high'
 
 export interface RiskFactor {

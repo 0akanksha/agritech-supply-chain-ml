@@ -5,7 +5,7 @@ import { fetchFromMlService } from "../lib/mlService.js";
 // origin (this Express server) instead of reaching across to a second local port.
 export const mlRouter = Router();
 
-const PROXIED_PATHS = ["regions", "crops", "weather", "satellite", "prices", "predict"] as const;
+const PROXIED_PATHS = ["regions", "crops", "weather", "forecast", "satellite", "prices", "predict"] as const;
 
 for (const path of PROXIED_PATHS) {
   mlRouter.get(`/${path}`, async (req, res) => {

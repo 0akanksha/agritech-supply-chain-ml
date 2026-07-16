@@ -52,7 +52,8 @@ AgriTech/
     │   │   └── features.py         # pure feature/label function fed by either source
     │   ├── etl/                    # weather.py (Open-Meteo), satellite.py (MODIS),
     │   │                            # prices.py (Agmarknet), run.py (orchestrator + status),
-    │   │                            # seed_placeholder_prices.py (see below)
+    │   │                            # seed_placeholder_prices.py / load_kaggle_prices.py
+    │   │                            # (see "Connecting real mandi prices" below)
     │   ├── models/train.py         # trains + MLflow-logs one model per crop
     │   ├── models/predict.py       # loads a model, scores a region/crop, explains the score
     │   ├── models/storage.py       # saves/loads trained models to local disk + Postgres —
@@ -117,9 +118,25 @@ That fallback is what makes served models survive a Render redeploy — see "Dep
    app.models.train`). Real Agmarknet rows overwrite the placeholder ones for the same
    region/crop/date automatically — no manual cleanup.
 
-Until then, `ml-service/app/etl/seed_placeholder_prices.py` seeds synthetic demo prices (tagged
-`source='synthetic_placeholder'` in the `mandi_prices` table) so the price chart, training, and
-predictions all have something to work with.
+Until then, two ways to get something better than synthetic placeholder data:
+
+- **`ml-service/app/etl/seed_placeholder_prices.py`** — synthetic demo prices (tagged
+  `source='synthetic_placeholder'`), so the price chart, training, and predictions have
+  *something* to work with immediately.
+- **`ml-service/app/etl/load_kaggle_prices.py`** — loads a static historical export of the same
+  underlying Agmarknet dataset, e.g. [this Kaggle mirror](https://www.kaggle.com/datasets/anshtanwar/current-daily-price-of-various-commodities-india).
+  Download the CSV, save it as `ml-service/data/kaggle_prices.csv` (gitignored — it's a large
+  third-party file, not something to commit), then `cd ml-service && .venv/bin/python -m
+  app.etl.load_kaggle_prices`. Tagged `source='kaggle_agmarknet'`: real historical prices, just
+  not live — ranked above `synthetic_placeholder` (overwrites it) but below live `'agmarknet'`
+  data (never overwrites it), via the same conditional-upsert pattern as the placeholder seeder.
+  Column names vary across exports of this dataset (plain vs. XML-escaped headers like
+  `Modal_x0020_Price` from older exports) — the script normalizes both, but if it can't find a
+  column it needs, it'll print the actual headers it found so `COLUMN_CANDIDATES` at the top of
+  the file can be adjusted.
+
+Either way, retrain afterward (admin page "Retrain models", or `.venv/bin/python -m
+app.models.train`) so the new price history actually feeds the model.
 
 ## Running locally
 

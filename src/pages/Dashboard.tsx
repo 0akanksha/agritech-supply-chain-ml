@@ -1,9 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ApiError, fetchCropHealth, fetchCrops, fetchPrediction, fetchPrices, fetchRegions, fetchWeather, saveFarm } from '@/lib/api'
-import type { Crop, CropHealthPoint, Prediction, PricePoint, Region, WeatherPoint } from '@/types'
+import {
+  ApiError,
+  fetchCropHealth,
+  fetchCrops,
+  fetchForecast,
+  fetchPrediction,
+  fetchPrices,
+  fetchRegions,
+  fetchWeather,
+  saveFarm,
+} from '@/lib/api'
+import type { Crop, CropHealthPoint, Forecast, Prediction, PricePoint, Region, WeatherPoint } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import WeatherPanel from '@/components/WeatherPanel'
+import ForecastPanel from '@/components/ForecastPanel'
 import CropHealthPanel from '@/components/CropHealthPanel'
 import PriceTrendChart from '@/components/PriceTrendChart'
 import RiskAlert from '@/components/RiskAlert'
@@ -18,14 +29,17 @@ export default function Dashboard() {
   const [cropId, setCropId] = useState<string>('')
 
   const [weather, setWeather] = useState<WeatherPoint[]>([])
+  const [forecast, setForecast] = useState<Forecast | null>(null)
   const [cropHealth, setCropHealth] = useState<CropHealthPoint[]>([])
   const [prices, setPrices] = useState<PricePoint[]>([])
   const [prediction, setPrediction] = useState<Prediction | null>(null)
 
   const [loadingOptions, setLoadingOptions] = useState(true)
   const [loadingData, setLoadingData] = useState(false)
+  const [loadingForecast, setLoadingForecast] = useState(false)
   const [loadingPrediction, setLoadingPrediction] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [forecastError, setForecastError] = useState<string | null>(null)
   const [predictionError, setPredictionError] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
@@ -68,6 +82,17 @@ export default function Dashboard() {
         setPredictionError(e instanceof ApiError ? e.message : 'Failed to load the risk prediction'),
       )
       .finally(() => setLoadingPrediction(false))
+
+    // Also separate: a live call to a third-party API, shouldn't blank the rest of the
+    // dashboard if it has a hiccup. Only depends on regionId, but refetching on cropId change
+    // too is harmless (cheap, no caching to invalidate).
+    setLoadingForecast(true)
+    setForecast(null)
+    setForecastError(null)
+    fetchForecast(regionId)
+      .then(setForecast)
+      .catch((e: unknown) => setForecastError(e instanceof ApiError ? e.message : 'Failed to load the forecast'))
+      .finally(() => setLoadingForecast(false))
   }, [regionId, cropId])
 
   const handleSaveFarm = async () => {
@@ -155,6 +180,10 @@ export default function Dashboard() {
             {error}
           </div>
         )}
+
+        <div className="mt-6">
+          <ForecastPanel forecast={forecast} loading={loadingForecast} error={forecastError} />
+        </div>
 
         <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="lg:col-span-2 grid grid-cols-1 gap-5 sm:grid-cols-2">

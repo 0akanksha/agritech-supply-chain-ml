@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.routers import admin, crops, predict, prices, regions, satellite, weather
+from app.routers import admin, crops, forecast, predict, prices, regions, satellite, weather
 
 # No CORS middleware, no auth middleware: this service is never reachable except from Express,
 # which spawns it as a child process bound to 127.0.0.1 in production (see
@@ -12,6 +12,7 @@ app = FastAPI(title="AgriTech ML Service", version="0.1.0")
 app.include_router(regions.router, prefix="/api")
 app.include_router(crops.router, prefix="/api")
 app.include_router(weather.router, prefix="/api")
+app.include_router(forecast.router, prefix="/api")
 app.include_router(satellite.router, prefix="/api")
 app.include_router(prices.router, prefix="/api")
 app.include_router(predict.router, prefix="/api")
