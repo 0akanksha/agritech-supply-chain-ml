@@ -10,6 +10,10 @@ const ML_SERVICE_DIR = path.resolve(import.meta.dirname, "../../../ml-service");
 let mlProcess: ChildProcess | null = null;
 let shuttingDown = false;
 
+const READY_URL = "http://127.0.0.1:8000/health";
+const READY_TIMEOUT_MS = 60_000;
+const READY_POLL_INTERVAL_MS = 300;
+
 function runToCompletion(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn("python3", args, { cwd: ML_SERVICE_DIR, stdio: "inherit" });
@@ -19,6 +23,27 @@ function runToCompletion(args: string[]): Promise<void> {
       else reject(new Error(`python3 ${args.join(" ")} exited with code ${code}`));
     });
   });
+}
+
+// uvicorn has to import pandas/scikit-learn/mlflow before it's actually ready to accept
+// connections — genuinely slow (several seconds) on free-tier CPU. Without this wait, Express
+// would call app.listen() and pass Render's health check almost immediately, and any request
+// that hits an /api/ml/* route in that window fails with "ML service is unavailable" — this
+// isn't hypothetical, it happened on the very first real deploy. Since free-tier Render sleeps
+// after 15 min idle and re-runs this whole startup on every wake, it would recur constantly,
+// not just once, if left unfixed.
+async function waitUntilReady(): Promise<void> {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(READY_URL);
+      if (res.ok) return;
+    } catch {
+      // not accepting connections yet — keep polling
+    }
+    await new Promise((resolve) => setTimeout(resolve, READY_POLL_INTERVAL_MS));
+  }
+  throw new Error(`Embedded ML service did not become ready within ${READY_TIMEOUT_MS}ms`);
 }
 
 export async function startEmbeddedMlService(): Promise<void> {
@@ -42,6 +67,8 @@ export async function startEmbeddedMlService(): Promise<void> {
     console.error("Failed to start embedded ML service:", err);
     process.exit(1);
   });
+
+  await waitUntilReady();
 }
 
 export function stopEmbeddedMlService(): void {
