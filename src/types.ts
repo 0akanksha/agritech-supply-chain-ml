@@ -49,6 +49,11 @@ export interface RiskFactor {
   contribution: number
 }
 
+export interface PestDiseaseRisk {
+  level: RiskLevel
+  message: string
+}
+
 export interface Prediction {
   region: string
   crop: string
@@ -58,6 +63,8 @@ export interface Prediction {
   explanation: string
   plainSummary: string
   factors: RiskFactor[]
+  currentPriceRsPerQuintal: number
+  pestDiseaseRisk: PestDiseaseRisk
 }
 
 export type UserRole = 'farmer' | 'admin'
@@ -88,11 +95,15 @@ export interface TrainingRun {
   nTest: string | null
 }
 
+export type AlertDirection = 'above' | 'below'
+
 export interface SavedFarm {
   id: string
   userId: string
   regionId: string
   cropId: string
   label: string | null
+  alertPrice: number | null
+  alertDirection: AlertDirection | null
   createdAt: string
 }

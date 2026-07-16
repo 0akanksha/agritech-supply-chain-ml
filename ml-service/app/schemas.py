@@ -57,6 +57,11 @@ class RiskFactor(BaseModel):
     contribution: float
 
 
+class PestDiseaseRisk(BaseModel):
+    level: RiskLevel
+    message: str
+
+
 class Prediction(BaseModel):
     region: str
     crop: str
@@ -66,3 +71,5 @@ class Prediction(BaseModel):
     explanation: str
     plainSummary: str
     factors: list[RiskFactor]
+    currentPriceRsPerQuintal: float
+    pestDiseaseRisk: PestDiseaseRisk

@@ -47,6 +47,32 @@ farmsRouter.post("/", async (req, res) => {
   }
 });
 
+const alertSchema = z
+  .object({
+    alertPrice: z.number().positive().nullable(),
+    alertDirection: z.enum(["above", "below"]).nullable(),
+  })
+  .refine((data) => (data.alertPrice === null) === (data.alertDirection === null), {
+    message: "alertPrice and alertDirection must both be set or both be cleared",
+  });
+
+// In-app price alerts only (no SMS/email infra) — sets the threshold a saved farm's current
+// price is compared against on the My Farms page.
+farmsRouter.patch("/:id", async (req, res) => {
+  const parsed = alertSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new HttpError(400, parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  const [updated] = await db
+    .update(savedFarms)
+    .set(parsed.data)
+    .where(and(eq(savedFarms.id, req.params.id), eq(savedFarms.userId, req.userId!)))
+    .returning();
+  if (!updated) throw new HttpError(404, "Saved farm not found.");
+  res.json({ farm: updated });
+});
+
 farmsRouter.delete("/:id", async (req, res) => {
   const [deleted] = await db
     .delete(savedFarms)

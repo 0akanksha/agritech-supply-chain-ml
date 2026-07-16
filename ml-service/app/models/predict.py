@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
+from app import pest_risk
 from app.data.features import DRIVER_COLUMNS, FEATURE_LABELS, build_feature_and_label_frame
 from app.data.real_data import load_ndvi, load_prices, load_weather
 from app.models.storage import load_artifact
@@ -13,6 +14,9 @@ from app.reference_data import CROPS_BY_ID, REGIONS_BY_ID
 # Enough real history for the rolling 4-week features to be non-null at the latest row,
 # with headroom for NDVI's ~16-day composite cadence — not a full retraining backfill.
 LOOKBACK_DAYS = 120
+# Recent window used for the pest/disease weather signal — a couple of weeks captures
+# "this week's conditions" without being thrown off by a single unusual day.
+PEST_RISK_WINDOW_DAYS = 14
 
 _MODEL_CACHE: dict[str, dict] = {}
 
@@ -156,6 +160,16 @@ def predict(region_id: str, crop_id: str) -> dict:
     explanation = _explanation(region.name, crop.name, score, level, days, factors)
     plain_summary = _plain_summary(crop.name, region.name, _recent_price_trend_pct(price_df), level)
 
+    recent_weather = weather_df.assign(date=pd.to_datetime(weather_df["date"])).sort_values("date")
+    recent_weather = recent_weather[recent_weather["date"] > pd.Timestamp(end) - pd.Timedelta(days=PEST_RISK_WINDOW_DAYS)]
+    pest_disease_risk = pest_risk.assess(
+        crop_id=crop.id,
+        crop_name=crop.name,
+        avg_humidity_pct=float(recent_weather["humidityPct"].mean()),
+        avg_temp_c=float(recent_weather["tempC"].mean()),
+        ndvi_trend=float(latest["ndvi_trend_4w"]),
+    )
+
     return {
         "region": region.name,
         "crop": crop.name,
@@ -165,4 +179,8 @@ def predict(region_id: str, crop_id: str) -> dict:
         "explanation": explanation,
         "plainSummary": plain_summary,
         "factors": [{"label": f["label"], "contribution": round(f["contribution"], 3)} for f in factors],
+        # Lets My Farms compare a saved farm's price against a farmer-set alert threshold
+        # without a second fetch — this endpoint already loads the price series.
+        "currentPriceRsPerQuintal": round(float(latest["modalPriceRsPerQuintal"]), 2),
+        "pestDiseaseRisk": pest_disease_risk,
     }

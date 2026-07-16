@@ -1,4 +1,5 @@
 import type {
+  AlertDirection,
   Crop,
   CropHealthPoint,
   EtlRun,
@@ -42,6 +43,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
@@ -105,6 +107,15 @@ export function saveFarm(input: { regionId: string; cropId: string; label?: stri
 
 export function deleteSavedFarm(id: string): Promise<void> {
   return api.delete(`/api/farms/${id}`)
+}
+
+// In-app only (no SMS/email infra) — sets or clears the price threshold that highlights this
+// saved farm on the My Farms page. Pass both null to clear an existing alert.
+export function updateFarmAlert(
+  id: string,
+  alert: { alertPrice: number | null; alertDirection: AlertDirection | null },
+): Promise<{ farm: SavedFarm }> {
+  return api.patch(`/api/farms/${id}`, alert)
 }
 
 // --- Admin: ETL + training triggers and status ---

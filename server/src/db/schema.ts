@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { numeric, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -23,6 +23,10 @@ export const savedFarms = pgTable(
     regionId: text("region_id").notNull(),
     cropId: text("crop_id").notNull(),
     label: text("label"),
+    // In-app only (no SMS/email infra) — My Farms highlights a farm when its latest price
+    // crosses this. Both null means no alert configured.
+    alertPrice: numeric("alert_price", { mode: "number" }),
+    alertDirection: text("alert_direction", { enum: ["above", "below"] }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [unique().on(table.userId, table.regionId, table.cropId)],
