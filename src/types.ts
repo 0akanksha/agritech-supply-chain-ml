@@ -54,6 +54,11 @@ export interface PestDiseaseRisk {
   message: string
 }
 
+export interface CropHealthAnomaly {
+  level: RiskLevel
+  message: string
+}
+
 export interface Prediction {
   region: string
   crop: string
@@ -65,6 +70,7 @@ export interface Prediction {
   factors: RiskFactor[]
   currentPriceRsPerQuintal: number
   pestDiseaseRisk: PestDiseaseRisk
+  cropHealthAnomaly: CropHealthAnomaly
 }
 
 export type UserRole = 'farmer' | 'admin'

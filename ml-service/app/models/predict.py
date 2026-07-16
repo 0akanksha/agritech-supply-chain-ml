@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
-from app import pest_risk
+from app import ndvi_anomaly, pest_risk
 from app.data.features import DRIVER_COLUMNS, FEATURE_LABELS, build_feature_and_label_frame
 from app.data.real_data import load_ndvi, load_prices, load_weather
 from app.models.storage import load_artifact
@@ -169,6 +169,7 @@ def predict(region_id: str, crop_id: str) -> dict:
         avg_temp_c=float(recent_weather["tempC"].mean()),
         ndvi_trend=float(latest["ndvi_trend_4w"]),
     )
+    crop_health_anomaly = ndvi_anomaly.assess(ndvi_df)
 
     return {
         "region": region.name,
@@ -183,4 +184,5 @@ def predict(region_id: str, crop_id: str) -> dict:
         # without a second fetch — this endpoint already loads the price series.
         "currentPriceRsPerQuintal": round(float(latest["modalPriceRsPerQuintal"]), 2),
         "pestDiseaseRisk": pest_disease_risk,
+        "cropHealthAnomaly": crop_health_anomaly,
     }

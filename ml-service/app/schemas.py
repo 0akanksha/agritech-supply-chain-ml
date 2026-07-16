@@ -62,6 +62,11 @@ class PestDiseaseRisk(BaseModel):
     message: str
 
 
+class CropHealthAnomaly(BaseModel):
+    level: RiskLevel
+    message: str
+
+
 class Prediction(BaseModel):
     region: str
     crop: str
@@ -73,3 +78,4 @@ class Prediction(BaseModel):
     factors: list[RiskFactor]
     currentPriceRsPerQuintal: float
     pestDiseaseRisk: PestDiseaseRisk
+    cropHealthAnomaly: CropHealthAnomaly

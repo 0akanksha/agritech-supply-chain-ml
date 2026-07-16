@@ -82,6 +82,18 @@ export default function RiskAlert({ prediction, loading, error }: Props) {
         </div>
         <p className="mt-2 text-sm leading-relaxed text-[var(--color-ink)]">{prediction.pestDiseaseRisk.message}</p>
       </div>
+
+      <div className="mt-5 border-t border-[var(--color-line)] pt-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+            Crop health anomaly
+          </h3>
+          <RiskBadge level={prediction.cropHealthAnomaly.level} />
+        </div>
+        <p className="mt-2 text-sm leading-relaxed text-[var(--color-ink)]">
+          {prediction.cropHealthAnomaly.message}
+        </p>
+      </div>
     </div>
   )
 }
