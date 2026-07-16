@@ -4,12 +4,12 @@ Small farmers face volatile mandi (wholesale market) pricing and climate risk. T
 fuses weather, satellite crop-health, and mandi price trends into regional ML models that flag
 localized supply-chain bottlenecks before they hit.
 
-**Phase 4 (current)**: deployable. A GitHub Actions pipeline runs CI (typecheck/lint/tests) on
-every push and, once it's green on `main`, triggers a deploy of both Render services — Render's
+**Phase 4 (current)**: deployable, as a single Render service. A GitHub Actions pipeline runs CI
+(typecheck/lint/tests) on every push and, once it's green on `main`, triggers a deploy — Render's
 own auto-deploy-on-push is deliberately turned off so a deploy only ever happens after CI passes
-(see "Deploying" below). Real weather (Open-Meteo) and real satellite crop-health (NASA/ORNL
-DAAC MODIS NDVI) feed the dashboard and the models; mandi prices are placeholder demo data until
-a free data.gov.in API key is connected (see "Connecting real mandi prices") — once it is, real
+(see "Deploying" below). Real weather (Open-Meteo) and real satellite crop-health (NASA/ORNL DAAC
+MODIS NDVI) feed the dashboard and the models; mandi prices are placeholder demo data until a
+free data.gov.in API key is connected (see "Connecting real mandi prices") — once it is, real
 Agmarknet data replaces the placeholder automatically. The bottleneck-risk label is a genuine,
 backtestable target (future realized price volatility, not a synthetic formula — see "How the
 model works"), trained runs are tracked in MLflow, and a seeded admin account can trigger ETL
@@ -19,9 +19,10 @@ refreshes and retraining from an admin page.
 
 ```
 AgriTech/
-├── .github/workflows/ci-deploy.yml   # CI on every push/PR; deploys (via Render Deploy Hooks)
+├── .github/workflows/ci-deploy.yml   # CI on every push/PR; deploys (via a Render Deploy Hook)
 │                                      # only on push to main, only after CI passes
-├── render.yaml                    # the two Render services (Blueprint), autoDeploy: false
+├── Dockerfile, .dockerignore      # the one image Render builds — see "Deploying"
+├── render.yaml                    # the single Render service (Blueprint), autoDeploy: false
 ├── src/                          # React + Vite + TS frontend
 │   ├── pages/                      # Dashboard, Login, Signup, Farms, Admin
 │   ├── context/AuthContext.tsx     # signup/login/logout/me
@@ -32,6 +33,8 @@ AgriTech/
 ├── server/                        # Express + Drizzle backend
 │   ├── src/db/schema.ts            # users (+ role), savedFarms
 │   ├── src/lib/ensureAdmin.ts      # seeds one admin from ADMIN_EMAIL/ADMIN_PASSWORD
+│   ├── src/lib/embeddedMlService.ts  # production only: spawns the ML service itself as a
+│   │                                  # child process — see "Deploying"
 │   ├── src/routes/auth.routes.ts   # signup, login, logout, me (JWT in httpOnly cookie)
 │   ├── src/routes/farms.routes.ts  # requireAuth: list/create/delete saved farms
 │   ├── src/routes/ml.routes.ts     # public thin proxy -> the Python ML service
@@ -39,12 +42,10 @@ AgriTech/
 │   └── src/index.ts                # single process: serves the API and the frontend itself
 │                                    # (Vite in middleware mode in dev, static dist in prod)
 └── ml-service/                    # Python FastAPI service — data + ML
-    ├── Dockerfile, .dockerignore   # how Render builds this service (runtime: docker)
     ├── app/
     │   ├── reference_data.py       # 6 Indian mandi regions (+ lat/lon) × 5 crops
     │   ├── db.py, schema.sql, migrate.py   # this service's own Postgres tables, in a
     │   │                            # separate `ml` schema (see db.py's docstring for why)
-    │   ├── internal_auth.py        # X-Internal-Secret check — see "Deploying" below
     │   ├── data/
     │   │   ├── synthetic.py        # seeded generators — now a test-fixture generator only
     │   │   ├── real_data.py        # Postgres reads, same shape as synthetic.py's output
@@ -62,8 +63,9 @@ AgriTech/
 
 Express (port 4000) is the single browser-facing process: it serves the frontend and owns
 `/api/auth`, `/api/farms`, `/api/ml` (public proxy), and `/api/admin` (admin-only proxy) to the
-Python service on port 8000. Locally the browser never reaches the ML service directly; in
-production it technically can (see "Deploying"), which is what `internal_auth.py` guards against.
+Python service on port 8000. In local dev that's a second process started by `npm run dev`; in
+production it's a child process Express spawns itself inside the same container (see
+"Deploying") — either way, the browser never talks to the Python service directly.
 
 ## How the model works
 
@@ -159,53 +161,61 @@ Other useful commands:
 
 ## Deploying
 
-Two [Render](https://render.com) services (`render.yaml`, a Blueprint) plus a GitHub Actions
+One [Render](https://render.com) service (`render.yaml`, a Blueprint) plus a GitHub Actions
 pipeline that's the only thing allowed to trigger a deploy — Render's own auto-deploy-on-push is
-turned off (`autoDeploy: false` on both services) so a bad push can't go live just because it
-was pushed; it has to pass CI first.
+turned off (`autoDeploy: false`) so a bad push can't go live just because it was pushed; it has
+to pass CI first.
+
+It's one service, not two, because Express spawns the Python ML service itself as a child
+process inside the same container (`server/src/lib/embeddedMlService.ts`), bound to `127.0.0.1`
+— genuinely unreachable from outside the container. An earlier version of this deploy split them
+into two Render services talking over the public internet with a shared-secret header, but that
+turned out to be more operational overhead than it was worth at this scale (two Blueprint
+services to keep correctly configured, two Deploy Hooks, a secret to keep in sync) for a problem
+(cross-service auth) that a single container sidesteps entirely.
 
 ### One-time setup
 
-1. **Create the Blueprint**: Render dashboard → New → Blueprint → connect this GitHub repo →
-   it reads `render.yaml` and creates `agritech-web` and `agritech-ml`. Nothing deploys
-   automatically yet (`autoDeploy: false`).
-2. **Fill in env vars** on each service (Render dashboard → service → Environment) — everything
-   marked `sync: false` in `render.yaml`:
-   - Both services: the same Neon `DATABASE_URL`.
-   - `agritech-web`: `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
-   - `agritech-ml`: `DATA_GOV_IN_API_KEY` (optional — leave blank to keep placeholder prices).
-   - Generate one secret (e.g. `openssl rand -hex 32`) and set it as `INTERNAL_ML_SECRET` on
-     **both** services — this is what stops a stranger from hitting `agritech-ml`'s public URL
-     directly (see `app/internal_auth.py`; free-tier Render services can't be made
-     private-network-only, so this app-level check is what actually protects it).
-   - Once `agritech-ml` exists, copy its Render-assigned URL into `agritech-web`'s
-     `ML_SERVICE_URL`.
-   - `JWT_SECRET` is auto-generated by the Blueprint; nothing to do there.
+1. **Create the Blueprint**: Render dashboard → **New** → **Blueprint** → connect this GitHub
+   repo. This step matters more than it looks — **"New → Web Service" instead of "New →
+   Blueprint" will silently ignore `render.yaml`** and auto-detect a build/runtime for you
+   (this happened once already: Render guessed "Python at the repo root" and "plain Node
+   defaults," and both were wrong). Blueprint is the only path that actually reads this file's
+   `runtime: docker` / `dockerfilePath` settings. Nothing deploys automatically yet
+   (`autoDeploy: false`).
+2. **Fill in env vars** (Render dashboard → the service → Environment) — everything marked
+   `sync: false` in `render.yaml`: `DATABASE_URL` (Neon), `ADMIN_EMAIL`, `ADMIN_PASSWORD`,
+   `DATA_GOV_IN_API_KEY` (optional — leave blank to keep placeholder prices). `JWT_SECRET` is
+   auto-generated by the Blueprint; `EMBEDDED_ML_SERVICE` and `MLFLOW_TRACKING_URI` already have
+   correct values baked into `render.yaml`.
 3. **Push the DB schema once**: `npm run db:push` (Express/Drizzle tables) locally against the
-   same `DATABASE_URL`, and let `agritech-ml`'s first deploy run its own migration automatically
-   (`Dockerfile`'s `CMD` runs `python -m app.migrate` on every container start — safe, purely
-   additive). Schema changes are never auto-applied from CI: an earlier unguarded `db:push`
-   against this same database once came within a TTY-prompt of dropping 4,600+ real ETL rows it
-   didn't recognize (see `db.py`'s docstring) — that's also why the two services keep separate
-   Postgres schemas (`public` for Express, `ml` for the ML service).
-4. **Wire up GitHub Actions**: each service's Settings tab has a Deploy Hook URL. Add them as
-   repo secrets — `RENDER_DEPLOY_HOOK_WEB` and `RENDER_DEPLOY_HOOK_ML` (Settings → Secrets and
-   variables → Actions, or `gh secret set RENDER_DEPLOY_HOOK_WEB`).
+   same `DATABASE_URL`. The ML service's own migration runs automatically on every container
+   start (`python -m app.migrate`, called from `embeddedMlService.ts` before `uvicorn` — safe,
+   purely additive). Schema changes are never auto-applied from CI: an earlier unguarded
+   `db:push` against this same database once came within a TTY-prompt of dropping 4,600+ real
+   ETL rows it didn't recognize (see `db.py`'s docstring) — that's also why Express and the ML
+   service keep separate Postgres schemas (`public` vs `ml`) to this day.
+4. **Wire up GitHub Actions**: the service's Settings tab has a Deploy Hook URL. Add it as a repo
+   secret — `RENDER_DEPLOY_HOOK` (Settings → Secrets and variables → Actions, or `gh secret set
+   RENDER_DEPLOY_HOOK`).
 
 ### Day to day
 
 Push to `main` → `.github/workflows/ci-deploy.yml` runs typecheck/lint/tests for the frontend,
-server, and ML service (plus a `docker build` sanity check) → if all pass, it `curl`s both Deploy
-Hooks → Render rebuilds and redeploys both services. Pull requests run the same CI checks but
-never deploy.
+server, and ML service (plus a `docker build` sanity check against the root `Dockerfile`) → if
+all pass, it `curl`s the Deploy Hook → Render rebuilds and redeploys. Pull requests run the same
+CI checks but never deploy.
 
 ### Free-tier things worth knowing
 
 - Free Render services sleep after 15 minutes idle and take ~30-50s to wake on the next
   request — expect a slow first load after a quiet period.
-- Free services get no persistent disk, which is why trained models live in Postgres
-  (`app/models/storage.py`) rather than only on local disk, and why MLflow's *run history*
-  (not the models themselves) resets on every deploy/cold-start — see `ml-service/.env.example`.
+- No persistent disk, which is why trained models live in Postgres (`app/models/storage.py`)
+  rather than only on local disk, and why MLflow's *run history* (not the models themselves)
+  resets on every deploy/cold-start — see `ml-service/.env.example`.
+- If the Python half crashes, Express exits too (`embeddedMlService.ts`'s exit handler), so
+  Render's health check fails and it restarts the whole container — simple, if a little blunt;
+  it means a Python-only crash costs you the whole container's warm state, not just that half.
 - ETL refreshes and retraining are still manually triggered (admin page or CLI), not on a
   schedule — a natural next step would be a Render Cron Job calling `python -m app.etl.run`
-  periodically, which needs its own env vars but no code changes to the ETL modules themselves.
+  periodically.

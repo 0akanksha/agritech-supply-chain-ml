@@ -1,52 +1,38 @@
-# Two services, applied once as a Render Blueprint (New -> Blueprint, point at this repo).
-# Both have autoDeploy disabled on purpose — deploys are triggered by GitHub Actions
-# (.github/workflows/ci-deploy.yml) only after CI passes on main, via each service's Deploy
-# Hook (Settings tab once the service exists), not on every push. See README's "Deploying"
-# section for the one-time manual setup this Blueprint doesn't cover (env var values, deploy
-# hook -> GitHub secrets).
+# One Render service, applied once as a Blueprint (New -> Blueprint, point at this repo, and
+# make sure it's actually the Blueprint flow — "New -> Web Service" auto-detects an environment
+# instead of reading this file, which is what broke the original two-service attempt). autoDeploy
+# is disabled on purpose — deploys are triggered by GitHub Actions
+# (.github/workflows/ci-deploy.yml) only after CI passes on main, via this service's Deploy Hook
+# (Settings tab once it exists), not on every push. See README's "Deploying" section for the
+# one-time manual setup this Blueprint doesn't cover (env var values, deploy hook -> GitHub
+# secret).
 services:
   - type: web
-    name: agritech-web
-    runtime: node
+    name: agritech
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
     autoDeploy: false
-    # Explicit --include=dev on both installs: Render's implicit pre-build install does not
-    # reliably install devDependencies (typescript, vite, @types/*) otherwise, which breaks
-    # `tsc -b && vite build`.
-    buildCommand: npm install --include=dev && npm install --include=dev --prefix server && npm run build:all
-    startCommand: npm start
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
         sync: false # Neon connection string — paste manually, never commit it
       - key: JWT_SECRET
         generateValue: true
-      # NODE_ENV intentionally omitted here as a platform env var — it's set to production
-      # only in server/package.json's own start script; setting it platform-wide makes
-      # Render's install skip devDependencies and breaks the build.
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
-      - key: ML_SERVICE_URL
-        sync: false # the agritech-ml service's Render URL, once it exists
-      - key: INTERNAL_ML_SECRET
-        sync: false # same value as agritech-ml's INTERNAL_ML_SECRET below
-
-  - type: web
-    name: agritech-ml
-    runtime: docker
-    dockerfilePath: ./ml-service/Dockerfile
-    dockerContext: ./ml-service
-    plan: free
-    autoDeploy: false
-    healthCheckPath: /health
-    envVars:
-      - key: DATABASE_URL
-        sync: false # same Neon connection string as agritech-web
       - key: DATA_GOV_IN_API_KEY
         sync: false # optional — real mandi prices stay off, placeholder data used, until set
       - key: MLFLOW_TRACKING_URI
         value: file:./mlruns # ephemeral on the free tier — see ml-service/.env.example
-      - key: INTERNAL_ML_SECRET
-        sync: false # same value as agritech-web's INTERNAL_ML_SECRET above
+      # Tells server/src/index.ts to spawn the Python ML service itself as a child process
+      # (server/src/lib/embeddedMlService.ts) instead of expecting it as a separate service —
+      # never set this locally, npm run dev already runs it as its own process.
+      - key: EMBEDDED_ML_SERVICE
+        value: "true"
+      # NODE_ENV intentionally omitted here as a platform env var — it's set to production
+      # only in server/package.json's own start script; setting it platform-wide makes
+      # Render's install skip devDependencies and breaks the build.

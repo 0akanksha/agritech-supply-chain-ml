@@ -18,15 +18,9 @@ export async function fetchFromMlService(
     url.searchParams.set(key, value);
   }
 
-  // Matches app/internal_auth.py on the ML service: only sent (and only enforced there)
-  // when INTERNAL_ML_SECRET is set — unset in local dev, set once the ML service is
-  // reachable from outside this app (see README's Deploying section).
-  const internalSecret = process.env.INTERNAL_ML_SECRET;
-  const headers: Record<string, string> = internalSecret ? { "X-Internal-Secret": internalSecret } : {};
-
   let upstream: Response;
   try {
-    upstream = await fetch(url, { method: options.method ?? "GET", headers });
+    upstream = await fetch(url, { method: options.method ?? "GET" });
   } catch {
     return { status: 502, body: { error: "ML service is unavailable." } };
   }

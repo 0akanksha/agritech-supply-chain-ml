@@ -10,6 +10,7 @@ import cookieParser from "cookie-parser";
 import { attachUser } from "./middleware/auth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { ensureAdminSeeded } from "./lib/ensureAdmin.js";
+import { startEmbeddedMlService, stopEmbeddedMlService } from "./lib/embeddedMlService.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { farmsRouter } from "./routes/farms.routes.js";
 import { mlRouter } from "./routes/ml.routes.js";
@@ -39,6 +40,16 @@ const PORT = Number(process.env.PORT) || 4000;
 
 async function start() {
   await ensureAdminSeeded();
+
+  // Only set in production (see render.yaml) — the single-container deploy where Express
+  // spawns the ML service itself rather than it running as a separate process/service.
+  if (process.env.EMBEDDED_ML_SERVICE === "true") {
+    await startEmbeddedMlService();
+    process.on("SIGTERM", () => {
+      stopEmbeddedMlService();
+      process.exit(0);
+    });
+  }
 
   if (process.env.NODE_ENV === "production") {
     const distDir = path.resolve(import.meta.dirname, "../../dist");
