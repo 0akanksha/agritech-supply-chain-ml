@@ -34,6 +34,18 @@ export default function Header() {
             </Link>
           )}
 
+          {!initializing && currentUser && (
+            <Link to="/marketplace" className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
+              Marketplace
+            </Link>
+          )}
+
+          {!initializing && currentUser && (
+            <Link to="/trades" className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
+              My Trades
+            </Link>
+          )}
+
           {!initializing && currentUser?.role === 'admin' && (
             <Link to="/admin" className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
               Admin

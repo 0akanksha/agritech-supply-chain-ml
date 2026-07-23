@@ -12,6 +12,9 @@ import type {
   PricePoint,
   Region,
   SavedFarm,
+  Trade,
+  TradeListing,
+  TradeStatus,
   TrainingRun,
   User,
   WeatherPoint,
@@ -175,6 +178,50 @@ export function createExpense(input: {
 
 export function deleteExpense(id: string): Promise<void> {
   return api.delete(`/api/expenses/${id}`)
+}
+
+// --- Trade marketplace ---
+
+export function fetchTradeListings(scope: 'open' | 'mine' = 'open'): Promise<{ tradeListings: TradeListing[] }> {
+  return api.get(`/api/trade-listings?scope=${scope}`)
+}
+
+export function fetchTradeListing(id: string): Promise<{ tradeListing: TradeListing }> {
+  return api.get(`/api/trade-listings/${id}`)
+}
+
+export function createTradeListing(input: {
+  regionId: string
+  cropId: string
+  cropCycleId?: string
+  quantityQuintal: number
+  askPriceRsPerQuintal: number
+  notes?: string
+}): Promise<{ tradeListing: TradeListing }> {
+  return api.post('/api/trade-listings', input)
+}
+
+export function cancelTradeListing(id: string): Promise<{ tradeListing: TradeListing }> {
+  return api.patch(`/api/trade-listings/${id}`, { status: 'cancelled' })
+}
+
+export function fetchTrades(listingId?: string): Promise<{ trades: Trade[] }> {
+  return api.get(listingId ? `/api/trades?listingId=${encodeURIComponent(listingId)}` : '/api/trades')
+}
+
+export function createTrade(input: {
+  listingId: string
+  quantityQuintal: number
+  pricePerQuintal: number
+}): Promise<{ trade: Trade }> {
+  return api.post('/api/trades', input)
+}
+
+export function updateTradeStatus(
+  id: string,
+  status: Exclude<TradeStatus, 'proposed'>,
+): Promise<{ trade: Trade }> {
+  return api.patch(`/api/trades/${id}`, { status })
 }
 
 // --- Admin: ETL + training triggers and status ---

@@ -8,6 +8,8 @@ import Signup from '@/pages/Signup'
 import Farms from '@/pages/Farms'
 import CropCycles from '@/pages/CropCycles'
 import CropCycleDetail from '@/pages/CropCycleDetail'
+import Marketplace from '@/pages/Marketplace'
+import Trades from '@/pages/Trades'
 import Admin from '@/pages/Admin'
 
 export default function App() {
@@ -39,6 +41,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <CropCycleDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/marketplace"
+          element={
+            <ProtectedRoute>
+              <Marketplace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trades"
+          element={
+            <ProtectedRoute>
+              <Trades />
             </ProtectedRoute>
           }
         />

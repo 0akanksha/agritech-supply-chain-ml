@@ -154,3 +154,33 @@ export interface Expense {
   note: string | null
   createdAt: string
 }
+
+export type TradeListingStatus = 'open' | 'closed' | 'cancelled'
+
+export interface TradeListing {
+  id: string
+  sellerId: string
+  sellerName: string | null
+  regionId: string
+  cropId: string
+  cropCycleId: string | null
+  quantityQuintal: number
+  askPriceRsPerQuintal: number
+  status: TradeListingStatus
+  notes: string | null
+  createdAt: string
+  remainingQuantity: number
+}
+
+export type TradeStatus = 'proposed' | 'accepted' | 'rejected' | 'cancelled' | 'completed'
+
+export interface Trade {
+  id: string
+  listingId: string
+  sellerId: string
+  buyerId: string
+  quantityQuintal: number
+  pricePerQuintal: number
+  status: TradeStatus
+  createdAt: string
+}

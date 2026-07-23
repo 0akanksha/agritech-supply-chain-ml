@@ -88,3 +88,51 @@ export const expenses = pgTable("expenses", {
   note: text("note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// A listing is one seller's offer to sell a quantity of a crop at an asking price. Quantity is
+// in quintals (100kg), matching the mandi-price convention already used elsewhere (askPrice is
+// Rs/quintal, same unit as Prediction.currentPriceRsPerQuintal). status only ever moves
+// open -> closed (fully matched by accepted/completed trades) or open -> cancelled by the
+// seller — routes enforce that, the column itself doesn't restrict transitions.
+export const tradeListings = pgTable("trade_listings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sellerId: uuid("seller_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  regionId: text("region_id").notNull(),
+  cropId: text("crop_id").notNull(),
+  // "set null" (not cascade): the listing/trade history should survive a crop cycle being
+  // deleted later — the cycle link is contextual annotation, not something the listing depends
+  // on to remain meaningful, unlike expenses.cropCycleId which cascades.
+  cropCycleId: uuid("crop_cycle_id").references(() => cropCycles.id, { onDelete: "set null" }),
+  quantityQuintal: numeric("quantity_quintal", { mode: "number" }).notNull(),
+  askPriceRsPerQuintal: numeric("ask_price_rs_per_quintal", { mode: "number" }).notNull(),
+  status: text("status", { enum: ["open", "closed", "cancelled"] })
+    .notNull()
+    .default("open"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// sellerId is denormalized from the listing (same rationale as expenses.userId) so trade
+// ownership checks stay flat eq() calls instead of a join. A trade is a buyer's proposal
+// against a listing; status is a one-way state machine enforced in trades.routes.ts:
+// proposed -> accepted -> completed, or proposed -> rejected/cancelled (terminal).
+export const trades = pgTable("trades", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  listingId: uuid("listing_id")
+    .notNull()
+    .references(() => tradeListings.id, { onDelete: "cascade" }),
+  sellerId: uuid("seller_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  buyerId: uuid("buyer_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  quantityQuintal: numeric("quantity_quintal", { mode: "number" }).notNull(),
+  pricePerQuintal: numeric("price_per_quintal", { mode: "number" }).notNull(),
+  status: text("status", { enum: ["proposed", "accepted", "rejected", "cancelled", "completed"] })
+    .notNull()
+    .default("proposed"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
