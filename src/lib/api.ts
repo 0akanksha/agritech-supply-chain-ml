@@ -1,8 +1,12 @@
 import type {
   AlertDirection,
   Crop,
+  CropCycle,
+  CropCycleStatus,
   CropHealthPoint,
   EtlRun,
+  Expense,
+  ExpenseCategory,
   Forecast,
   Prediction,
   PricePoint,
@@ -116,6 +120,61 @@ export function updateFarmAlert(
   alert: { alertPrice: number | null; alertDirection: AlertDirection | null },
 ): Promise<{ farm: SavedFarm }> {
   return api.patch(`/api/farms/${id}`, alert)
+}
+
+// --- Crop cycles & expenses ---
+
+export function fetchCropCycles(): Promise<{ cropCycles: CropCycle[] }> {
+  return api.get('/api/crop-cycles')
+}
+
+export function fetchCropCycle(id: string): Promise<{ cropCycle: CropCycle }> {
+  return api.get(`/api/crop-cycles/${id}`)
+}
+
+export function createCropCycle(input: {
+  regionId: string
+  cropId: string
+  label?: string
+  areaAcres?: number
+  sowingDate: string
+  expectedHarvestDate?: string
+}): Promise<{ cropCycle: CropCycle }> {
+  return api.post('/api/crop-cycles', input)
+}
+
+export function updateCropCycle(
+  id: string,
+  input: Partial<{
+    status: CropCycleStatus
+    actualHarvestDate: string | null
+    label: string | null
+    notes: string | null
+  }>,
+): Promise<{ cropCycle: CropCycle }> {
+  return api.patch(`/api/crop-cycles/${id}`, input)
+}
+
+export function deleteCropCycle(id: string): Promise<void> {
+  return api.delete(`/api/crop-cycles/${id}`)
+}
+
+export function fetchExpenses(cropCycleId?: string): Promise<{ expenses: Expense[] }> {
+  return api.get(cropCycleId ? `/api/expenses?cropCycleId=${encodeURIComponent(cropCycleId)}` : '/api/expenses')
+}
+
+export function createExpense(input: {
+  cropCycleId: string
+  category: ExpenseCategory
+  amount: number
+  expenseDate: string
+  note?: string
+}): Promise<{ expense: Expense }> {
+  return api.post('/api/expenses', input)
+}
+
+export function deleteExpense(id: string): Promise<void> {
+  return api.delete(`/api/expenses/${id}`)
 }
 
 // --- Admin: ETL + training triggers and status ---

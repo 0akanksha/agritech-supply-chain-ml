@@ -13,6 +13,8 @@ import { ensureAdminSeeded } from "./lib/ensureAdmin.js";
 import { startEmbeddedMlService, stopEmbeddedMlService } from "./lib/embeddedMlService.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { farmsRouter } from "./routes/farms.routes.js";
+import { cropCyclesRouter } from "./routes/cropCycles.routes.js";
+import { expensesRouter } from "./routes/expenses.routes.js";
 import { mlRouter } from "./routes/ml.routes.js";
 import { adminRouter } from "./routes/admin.routes.js";
 
@@ -27,6 +29,8 @@ app.use(attachUser);
 
 app.use("/api/auth", authRouter);
 app.use("/api/farms", farmsRouter);
+app.use("/api/crop-cycles", cropCyclesRouter);
+app.use("/api/expenses", expensesRouter);
 app.use("/api/ml", mlRouter);
 app.use("/api/admin", adminRouter);
 

@@ -6,6 +6,8 @@ import Dashboard from '@/pages/Dashboard'
 import Login from '@/pages/Login'
 import Signup from '@/pages/Signup'
 import Farms from '@/pages/Farms'
+import CropCycles from '@/pages/CropCycles'
+import CropCycleDetail from '@/pages/CropCycleDetail'
 import Admin from '@/pages/Admin'
 
 export default function App() {
@@ -21,6 +23,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Farms />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/crop-cycles"
+          element={
+            <ProtectedRoute>
+              <CropCycles />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/crop-cycles/:id"
+          element={
+            <ProtectedRoute>
+              <CropCycleDetail />
             </ProtectedRoute>
           }
         />

@@ -113,3 +113,44 @@ export interface SavedFarm {
   alertDirection: AlertDirection | null
   createdAt: string
 }
+
+export type CropCycleStatus = 'active' | 'harvested' | 'abandoned'
+
+export interface CropCycle {
+  id: string
+  userId: string
+  regionId: string
+  cropId: string
+  label: string | null
+  areaAcres: number | null
+  sowingDate: string
+  expectedHarvestDate: string | null
+  actualHarvestDate: string | null
+  status: CropCycleStatus
+  notes: string | null
+  createdAt: string
+  totalSpent: number
+}
+
+export type ExpenseCategory =
+  | 'seeds'
+  | 'fertilizer'
+  | 'pesticide'
+  | 'labor'
+  | 'irrigation'
+  | 'equipment'
+  | 'transport'
+  | 'land_rent'
+  | 'storage'
+  | 'other'
+
+export interface Expense {
+  id: string
+  userId: string
+  cropCycleId: string
+  category: ExpenseCategory
+  amount: number
+  expenseDate: string
+  note: string | null
+  createdAt: string
+}

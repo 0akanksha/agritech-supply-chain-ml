@@ -28,6 +28,12 @@ export default function Header() {
             </Link>
           )}
 
+          {!initializing && currentUser && (
+            <Link to="/crop-cycles" className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
+              Crop Cycles
+            </Link>
+          )}
+
           {!initializing && currentUser?.role === 'admin' && (
             <Link to="/admin" className="text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
               Admin
